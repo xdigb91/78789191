@@ -44,16 +44,10 @@ local char = player.Character or player.CharacterAdded:Wait()
 local humanoid = waitChildLoop(char, "Humanoid")
 local hrp = waitChildLoop(char, "HumanoidRootPart")
 
--- 活动/主页统一调度优先级：糖果玉米(1) > 鬼屋(2) > 糖果(3) > 主页(4)
-local autoCorn = false
-local autoHauntedHouse = false
-local autoCandy = false
 local function activityPriorityActive(rank)
-	if autoCorn and rank > 1 then return true end
-	if autoHauntedHouse and rank > 2 then return true end
-	if autoCandy and rank > 3 then return true end
 	return false
 end
+
 
 local autoRun = false
 local autoRunToggle = nil
@@ -67,7 +61,8 @@ local autoInteractLinked = false
 local AutoInteractToggle = nil
 local autoUpgradeTreadmill = false
 local autoUpgradePlot = false
-local autoEquipBest = false
+autoEquipBest = false
+autoClaimDex = false
 local autoHome = false
 local interactLoopConn = nil
 local petEspEnabled = false
@@ -107,9 +102,13 @@ local EGG_DATA = {
 	{ en = "Nebula", cn = "星云蛋", weight = 7000000, rarity = "Celestial" },
 	{ en = "Supernova", cn = "超新星蛋", weight = 8000000, rarity = "Celestial" },
 	{ en = "Phantom", cn = "幽灵蛋", weight = 9000000, rarity = "Spectral" },
-	{ en = "Skill", cn = "技能蛋", weight = 10000000, rarity = "Spectral" },
 	{ en = "Skull", cn = "骷髅蛋", weight = 10500000, rarity = "Spectral" },
 	{ en = "LockedEgg", cn = "锁定蛋", weight = 11000000, rarity = "Spectral" },
+	{ en = "LunaEgg", cn = "月亮蛋", weight = 11500000, rarity = "Spectral" },
+	{ en = "FairyEgg", cn = "仙女蛋", weight = 12000000, rarity = "Spectral" },
+	{ en = "PhoenixEgg", cn = "凤凰蛋", weight = 12500000, rarity = "Spectral" },
+	{ en = "CrystalEgg", cn = "水晶蛋", weight = 13000000, rarity = "Spectral" },
+	{ en = "RoyalDragonEgg", cn = "皇家龙蛋", weight = 13500000, rarity = "Spectral" },
 }
 
 local EGG_CN_TO_EN = {}
@@ -309,6 +308,7 @@ RARITY_CN = {
 	HUGE = "巨大", Huge = "巨大", TITANIC = "泰坦", Titanic = "泰坦",
 	Celestial = "天界", Hell = "地狱",
 	Spectral = "幽魂",
+	Ethereal = "缥缈",
 	Void = "虚空", Omega = "欧米伽",
 }
 
@@ -320,10 +320,11 @@ RARITY_COLOR = {
 	HUGE = "#FF1493", Huge = "#FF1493", TITANIC = "#FF0000", Titanic = "#FF0000",
 	Celestial = "#FFE066", Hell = "#B22222",
 	Spectral = "#00CED1",
+	Ethereal = "#E0FFFF",
 	Void = "#4B0082", Omega = "#FF8C00",
 }
 
-PET_RARITY_OPTIONS = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "天界", "地狱", "虚空", "欧米伽", "幽魂" }
+PET_RARITY_OPTIONS = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "天界", "地狱", "虚空", "欧米伽", "幽魂", "缥缈" }
 
 local selectedEggEnglish = {}
 local selectedPetRarities = {}
@@ -1002,9 +1003,9 @@ local function getEggHealth(obj)
 	return hp
 end
 
-PET_PREFIX_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Fortune", "Lucky", "Gold", "Sun", "Solar", "Starry", "Star", "Blackhole", "BlackHole", "Volcanic", "Lava", "Blossom", "Flower", "Bamboo", "Angel", "Holy", "Fallen", "FallenAngel", "Rift", "Void", "Celestial", "Omega", "Sea", "Ocean", "Lake", "Frozen", "Ice", "Snow", "Yeti", "Rainbow", "Candy", "Tree", "Wood", "Rock", "Stone", "Forest", "Cactus", "Desert", "Bones", "Bone", "Skeleton", "Scorpion", "Easter", "Gooey", "Slime", "Sticky", "Swamp", "Water", "Aqua", "Spectral" }
+PET_PREFIX_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Fortune", "Lucky", "Gold", "Sun", "Solar", "Starry", "Star", "Blackhole", "BlackHole", "Volcanic", "Lava", "Blossom", "Flower", "Bamboo", "Angel", "Holy", "Fallen", "FallenAngel", "Rift", "Void", "Celestial", "Omega", "Sea", "Ocean", "Lake", "Frozen", "Ice", "Snow", "Yeti", "Rainbow", "Candy", "Tree", "Wood", "Rock", "Stone", "Forest", "Cactus", "Desert", "Bones", "Bone", "Skeleton", "Scorpion", "Easter", "Gooey", "Slime", "Sticky", "Swamp", "Water", "Aqua", "Spectral", "Ethereal" }
 
-PET_PREFIX_WORDS.cn = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "巨大", "泰坦", "天界", "虚空", "欧米伽", "幽魂" }
+PET_PREFIX_WORDS.cn = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "巨大", "泰坦", "天界", "虚空", "欧米伽", "幽魂", "缥缈" }
 
 local function stripNamePrefix(raw)
 	if not raw then return raw end
@@ -1058,7 +1059,7 @@ local function normalizePetName(raw)
 	return nil
 end
 
-RARITY_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Celestial", "Heaven", "Heavenly", "Hell", "Hades", "Infernal", "Inferno", "Underworld", "Nether", "Void", "Omega", "Spectral" }
+RARITY_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Celestial", "Heaven", "Heavenly", "Hell", "Hades", "Infernal", "Inferno", "Underworld", "Nether", "Void", "Omega", "Spectral", "Ethereal" }
 
 RARITY_ALIAS_EN = {
 	Mythical = "Mythic", Heaven = "Celestial", Heavenly = "Celestial",
@@ -1072,6 +1073,7 @@ RARITY_CN_TO_EN = {
 	["神圣"] = "Divine", ["天界"] = "Celestial", ["地狱"] = "Hell",
 	["虚空"] = "Void", ["欧米伽"] = "Omega",
 	["幽魂"] = "Spectral",
+	["缥缈"] = "Ethereal",
 }
 
 local function extractRarityFromName(raw)
@@ -1688,6 +1690,9 @@ local PICKAXE_SHOP = {
 	{ name = "Sci Fi", cn = "科幻" },
 	{ name = "Enchanted", cn = "附魔" },
 	{ name = "Haunted", cn = "万圣节", price = "1Qi" },
+	{ name = "Castle", cn = "城堡", price = "2Qi" },
+	{ name = "Fairy", cn = "仙女", price = "5Qi" },
+	{ name = "Dragon", cn = "龙", price = "25Qi" },
 }
 local TRAIL_SHOP = {
 	{ name = "White", cn = "白色" },
@@ -1723,35 +1728,8 @@ local function buyTrail(id)
 end
 
 
-local autoBuyPickaxe = false
-local autoBuyPickaxeConn = nil
-local function startAutoBuyPickaxe()
-	if autoBuyPickaxeConn then return end
-	autoBuyPickaxeConn = task.spawn(function()
-		local idx = 1
-		while autoBuyPickaxe do
-			buyPickaxe(idx)
-			idx = idx % #PICKAXE_SHOP + 1
-			task.wait(1)
-		end
-		autoBuyPickaxeConn = nil
-	end)
-end
-
-local autoBuyTrail = false
-local autoBuyTrailConn = nil
-local function startAutoBuyTrail()
-	if autoBuyTrailConn then return end
-	autoBuyTrailConn = task.spawn(function()
-		local idx = 1
-		while autoBuyTrail do
-			buyTrail(idx)
-			idx = idx % #TRAIL_SHOP + 1
-			task.wait(1)
-		end
-		autoBuyTrailConn = nil
-	end)
-end
+selectedPickaxeIdx = nil
+selectedTrailIdx = nil
 
 local upgradeTreadmillConn = nil
 local function startAutoUpgradeTreadmill()
@@ -1790,6 +1768,20 @@ local function startAutoEquipBest()
 			task.wait(0.5)
 		end
 		equipBestConn = nil
+	end)
+end
+
+local claimDexConn = nil
+local function startAutoClaimDex()
+	if claimDexConn then return end
+	claimDexConn = task.spawn(function()
+		while autoClaimDex do
+			local args = { "ClaimAll" }
+			local r = game:GetService("ReplicatedStorage"):FindFirstChild("IndexRemote")
+			if r then r:FireServer(unpack(args)) end
+			task.wait(3)
+		end
+		claimDexConn = nil
 	end)
 end
 
@@ -2065,412 +2057,7 @@ local function startAutoHome()
 end
 
 
-local autoCandyConn = nil
 
-local function collectCandyTargets()
-	local folder = workspace:FindFirstChild("HalloweenCandyPiles")
-	if not folder then return {} end
-	local list = {}
-	for _, child in ipairs(folder:GetChildren()) do
-		local part = nil
-		if child:IsA("BasePart") then
-			part = child
-		elseif child.PrimaryPart then
-			part = child.PrimaryPart
-		else
-			part = child:FindFirstChildWhichIsA("BasePart")
-		end
-		if part and part.Parent then
-			table.insert(list, { obj = child, part = part, hp = getEggHealth(child) })
-		end
-	end
-	table.sort(list, function(a, b)
-		if a.hp == nil then return false end
-		if b.hp == nil then return true end
-		return a.hp < b.hp
-	end)
-	return list
-end
-
-local function startAutoCandy()
-	if autoCandyConn then return end
-	autoCandyConn = task.spawn(function()
-		while autoCandy do
-			while autoCandy and activityPriorityActive(3) do
-				task.wait(0.5)
-			end
-			if not autoCandy then break end
-			local targets = collectCandyTargets()
-			if #targets == 0 then
-				task.wait(2)
-			else
-				for _, t in ipairs(targets) do
-					if not autoCandy then break end
-					local part = t.part
-					if not part or not part.Parent then break end
-					local obj = t.obj
-					local hpNow = getEggHealth(obj)
-					if hpNow ~= nil and hpNow <= 0 then break end
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					if not hrp then break end
-					local toEgg = part.Position - hrp.Position
-					local flatDir = Vector3.new(toEgg.X, 0, toEgg.Z)
-					local standPos = part.Position
-					if flatDir.Magnitude >= 1 then
-						standPos = part.Position - flatDir.Unit * 5
-					else
-						standPos = part.Position - Vector3.new(5, 0, 0)
-					end
-					lockUtil.guardZone = nil
-					lockUtil.eggPos = part.Position
-					if not lockUtil.navWalk(standPos, 5, { brake = true }) then break end
-					local timeout = 60
-					local elapsed = 0
-					local lastHealth = humanoid and humanoid.Health or 100
-					while elapsed < timeout and autoCandy and not activityPriorityActive(3) do
-						if not part.Parent then break end
-						hpNow = getEggHealth(obj)
-						if hpNow ~= nil and hpNow <= 0 then break end
-						local curHealth = humanoid and humanoid.Health or lastHealth
-						local gotHit = curHealth < lastHealth - 0.5
-						lastHealth = curHealth
-						if not gotHit and char then
-							local hh = char:FindFirstChild("HumanoidRootPart")
-							if hh then
-								local dxx = hh.Position.X - standPos.X
-								local dzz = hh.Position.Z - standPos.Z
-								if (dxx * dxx + dzz * dzz) > 144 then gotHit = true end
-							end
-						end
-						if gotHit then
-							lockUtil.placeHover(standPos.X, standPos.Z, (getGroundY(standPos) or standPos.Y), 2)
-							lockCharacter()
-							local settleAtk = 0
-							local settleElapsed = 0
-							while settleElapsed < 0.5 and autoCandy do
-								if not part.Parent then break end
-								local dt2 = RunService.Heartbeat:Wait()
-								settleElapsed = settleElapsed + dt2
-								settleAtk = settleAtk + dt2
-								if settleAtk >= 0.1 then
-									attackEgg(part)
-									settleAtk = 0
-								end
-							end
-							unlockCharacter()
-						end
-						local h = char and char:FindFirstChild("HumanoidRootPart")
-						if h and part.Parent then
-							h.CFrame = CFrame.lookAt(h.Position, Vector3.new(part.Position.X, h.Position.Y, part.Position.Z))
-						end
-						local dt = RunService.Heartbeat:Wait()
-						elapsed = elapsed + dt
-						if part.Parent then attackEgg(part) end
-					end
-				end
-			end
-			task.wait(0.5)
-		end
-		autoCandyConn = nil
-	end)
-end
-
-local autoCornConn = nil
-local CORN_DANGER = 15
-local CORN_SAFE = 20
-
-local function getPumpkinKings()
-	local folder = workspace:FindFirstChild("BloodMoonPumpkinKings")
-	if not folder then return {} end
-	local list = {}
-	for _, child in ipairs(folder:GetChildren()) do
-		local pos = nil
-		if child:IsA("BasePart") then
-			pos = child.Position
-		elseif child.PrimaryPart then
-			pos = child.PrimaryPart.Position
-		else
-			local rp = child:FindFirstChild("HumanoidRootPart")
-			if not rp then rp = child:FindFirstChildWhichIsA("BasePart") end
-			if rp then pos = rp.Position end
-		end
-		if pos then table.insert(list, pos) end
-	end
-	return list
-end
-
-local function nearestKing(fromPos)
-	local best, bestD = nil, math.huge
-	for _, kp in ipairs(getPumpkinKings()) do
-		local d = (kp - fromPos).Magnitude
-		if d < bestD then bestD = d; best = kp end
-	end
-	return best, bestD
-end
-
-local function collectCornTargets()
-	local folder = workspace:FindFirstChild("CandyHeistVisuals")
-	if not folder then return {} end
-	local list = {}
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	local myPos = hrp and hrp.Position
-	for _, child in ipairs(folder:GetChildren()) do
-		if child.Name ~= "CandyHeistBackpack" then
-			local part = nil
-			if child:IsA("BasePart") then
-				part = child
-			elseif child.PrimaryPart then
-				part = child.PrimaryPart
-			else
-				part = child:FindFirstChildWhichIsA("BasePart")
-			end
-			if part and part.Parent then
-				local hp = getEggHealth(child)
-				if hp == nil or hp > 0 then
-					local dist = myPos and (part.Position - myPos).Magnitude or math.huge
-					table.insert(list, { obj = child, part = part, hp = hp, dist = dist })
-				end
-			end
-		end
-	end
-	table.sort(list, function(a, b) return a.dist < b.dist end)
-	return list
-end
-
-local function cornWalk(targetPos, arriveDist)
-	if not char or not char.Parent then return false end
-	arriveDist = arriveDist or 2
-	local maxTime = 30
-	local baseSpd = getCurrentSpeed()
-	if baseSpd < 1 then baseSpd = 1 end
-	if baseSpd > 30 then baseSpd = 16 end
-	local function restoreSpd()
-		if humanoid and humanoid.Parent then
-			pcall(function() humanoid.WalkSpeed = baseSpd end)
-		end
-	end
-	if humanoid and humanoid.Parent then
-		pcall(function()
-			humanoid.PlatformStand = false
-			humanoid.JumpPower = 50
-			humanoid:ChangeState(Enum.HumanoidStateType.Running)
-		end)
-	end
-	local startPos = char:GetPivot().Position
-	local goal = Vector3.new(targetPos.X, startPos.Y, targetPos.Z)
-	local elapsed = 0
-	local lastPos = startPos
-	local stallT = 0
-	local stuckN = 0
-	local arrived = false
-	local flee = false
-	while elapsed < maxTime do
-		if not autoCorn then break end
-		local curHrp = char:FindFirstChild("HumanoidRootPart")
-		if not curHrp then break end
-		local curPos = curHrp.Position
-		local _, kd = nearestKing(curPos)
-		if kd < CORN_DANGER then
-			flee = true
-			break
-		end
-		local remain = (Vector3.new(goal.X - curPos.X, 0, goal.Z - curPos.Z)).Magnitude
-		if remain < arriveDist then arrived = true break end
-		local dir = Vector3.new(goal.X - curPos.X, 0, goal.Z - curPos.Z)
-		local toGoal = dir.Unit
-		local cam = workspace.CurrentCamera
-		local camCF = cam and cam.CFrame
-		local camDir = camCF and camCF:VectorToObjectSpace(toGoal) or toGoal
-		local brakeD = baseSpd * 0.15
-		if brakeD < 3 then brakeD = 3 end
-		local useSpd = baseSpd
-		if remain < brakeD then
-			useSpd = remain * 8
-			if useSpd < 2 then useSpd = 2 end
-			if useSpd > baseSpd then useSpd = baseSpd end
-		end
-		if humanoid and humanoid.Parent and math.abs(humanoid.WalkSpeed - useSpd) > 0.1 then
-			pcall(function() humanoid.WalkSpeed = useSpd end)
-		end
-		pcall(function() humanoid:Move(camDir, true) end)
-		local dt = RunService.RenderStepped:Wait()
-		elapsed = elapsed + dt
-		local moved = (curHrp.Position - lastPos).Magnitude
-		lastPos = curHrp.Position
-		if moved < 0.05 then
-			stallT = stallT + dt
-			if stallT > 0.4 then
-				stallT = 0
-				stuckN = stuckN + 1
-				if stuckN > 10 then break end
-			end
-		else
-			stallT = 0
-		end
-	end
-	pcall(function() humanoid:Move(Vector3.zero, true) end)
-	restoreSpd()
-	if flee then return "flee" end
-	return arrived
-end
-
-local function startAutoCorn()
-	if autoCornConn then return end
-	autoCornConn = task.spawn(function()
-		while autoCorn do
-			local myHrp = char and char:FindFirstChild("HumanoidRootPart")
-			if not myHrp then
-				task.wait(1)
-			else
-				local myPos = myHrp.Position
-				local kingPos, kingDist = nearestKing(myPos)
-				if kingPos and kingDist < CORN_DANGER then
-					-- 被南瓜王追杀：向远离方向直线逃跑
-					local dir = myPos - kingPos
-					if dir.Magnitude < 0.01 then dir = Vector3.new(1, 0, 0) end
-					local fleeTarget = myPos + dir.Unit * 35
-					local gY = getGroundY(fleeTarget, true)
-					if gY then fleeTarget = Vector3.new(fleeTarget.X, gY, fleeTarget.Z) end
-					unlockCharacter()
-					cornWalk(fleeTarget, 2)
-					unlockCharacter()
-					task.wait(0.5)
-				else
-					local targets = collectCornTargets()
-					local picked = nil
-					for _, t in ipairs(targets) do
-						local _, d = nearestKing(t.part.Position)
-						if d >= CORN_SAFE then picked = t break end
-					end
-					if not picked then
-						task.wait(1)
-					else
-						local part = picked.part
-						local obj = picked.obj
-						local hrp = char and char:FindFirstChild("HumanoidRootPart")
-						if hrp then
-							local toEgg = part.Position - hrp.Position
-							local flatDir = Vector3.new(toEgg.X, 0, toEgg.Z)
-							local standPos = part.Position
-							if flatDir.Magnitude >= 1 then
-								standPos = part.Position - flatDir.Unit * 5
-							else
-								standPos = part.Position - Vector3.new(5, 0, 0)
-							end
-							local gY2 = getGroundY(standPos, true)
-							if gY2 then standPos = Vector3.new(standPos.X, gY2, standPos.Z) end
-							unlockCharacter()
-							local walkRes = cornWalk(standPos, 4)
-							unlockCharacter()
-							if walkRes ~= "flee" then
-								local timeout = 45
-								local elapsed = 0
-								local lastHealth = humanoid and humanoid.Health or 100
-								while elapsed < timeout and autoCorn do
-									if not part.Parent then break end
-									local hpNow = getEggHealth(obj)
-									if hpNow ~= nil and hpNow <= 0 then break end
-									local curHealth = humanoid and humanoid.Health or lastHealth
-									local gotHit = curHealth < lastHealth - 0.5
-									lastHealth = curHealth
-									local hh = char and char:FindFirstChild("HumanoidRootPart")
-									local _, kd = nearestKing(hh and hh.Position or myPos)
-									if kd < CORN_DANGER then break end
-									if not gotHit and hh then
-										local dxx = hh.Position.X - standPos.X
-										local dzz = hh.Position.Z - standPos.Z
-										if (dxx * dxx + dzz * dzz) > 144 then gotHit = true end
-									end
-									if gotHit then
-										lockUtil.placeHover(standPos.X, standPos.Z, (getGroundY(standPos) or standPos.Y), 2)
-										lockCharacter()
-										local settleAtk = 0
-										local settleElapsed = 0
-										while settleElapsed < 0.5 and autoCorn do
-											if not part.Parent then break end
-											local dt2 = RunService.Heartbeat:Wait()
-											settleElapsed = settleElapsed + dt2
-											settleAtk = settleAtk + dt2
-											if settleAtk >= 0.1 then
-												attackEgg(part)
-												settleAtk = 0
-											end
-										end
-										unlockCharacter()
-									end
-									if hh and part.Parent then
-										hh.CFrame = CFrame.lookAt(hh.Position, Vector3.new(part.Position.X, hh.Position.Y, part.Position.Z))
-									end
-									local dt = RunService.Heartbeat:Wait()
-									elapsed = elapsed + dt
-									if part.Parent then attackEgg(part) end
-								end
-								-- 打破后停留，等待糖果玉米掉落被拾取
-								local settle2 = 0
-								while settle2 < 1 and autoCorn do
-									local dt3 = RunService.Heartbeat:Wait()
-									settle2 = settle2 + dt3
-									local h2 = char and char:FindFirstChild("HumanoidRootPart")
-									local _, kd2 = nearestKing(h2 and h2.Position or myPos)
-									if kd2 < CORN_DANGER then break end
-								end
-							end
-						end
-					end
-				end
-			end
-			task.wait(0.5)
-		end
-		autoCornConn = nil
-	end)
-end
-
-local HalloweenShopRequest = ReplicatedStorage:FindFirstChild("HalloweenShopRequest")
-local function buyHalloweenEgg(name)
-	if not HalloweenShopRequest then return end
-	pcall(function()
-		HalloweenShopRequest:InvokeServer("BuyEgg", name)
-	end)
-end
-
-local autoBuyEgg1 = false
-local autoBuyEgg1Conn = nil
-local function startAutoBuyEgg1()
-	if autoBuyEgg1Conn then return end
-	autoBuyEgg1Conn = task.spawn(function()
-		while autoBuyEgg1 do
-			buyHalloweenEgg("HalloweenEgg1")
-			task.wait(1)
-		end
-		autoBuyEgg1Conn = nil
-	end)
-end
-
-local autoBuyEgg2 = false
-local autoBuyEgg2Conn = nil
-local function startAutoBuyEgg2()
-	if autoBuyEgg2Conn then return end
-	autoBuyEgg2Conn = task.spawn(function()
-		while autoBuyEgg2 do
-			buyHalloweenEgg("HalloweenEgg2")
-			task.wait(1)
-		end
-		autoBuyEgg2Conn = nil
-	end)
-end
-
-local autoBuyEgg3 = false
-local autoBuyEgg3Conn = nil
-local function startAutoBuyEgg3()
-	if autoBuyEgg3Conn then return end
-	autoBuyEgg3Conn = task.spawn(function()
-		while autoBuyEgg3 do
-			buyHalloweenEgg("HalloweenEgg3")
-			task.wait(1)
-		end
-		autoBuyEgg3Conn = nil
-	end)
-end
 
 local function panToPickupAware(targetPos, arriveDist)
 	if not autoRun and not autoPickup then return false end
@@ -2645,140 +2232,6 @@ local function farmAllZones()
 	end
 end
 
-local autoHauntedHouseConn = nil
-
-local function getHauntedHouseNum(obj)
-	local num = string.match(tostring(obj.Name), "%d+")
-	if num then return tonumber(num) or math.huge end
-	return math.huge
-end
-
-local function collectHauntedHouses()
-	local folder = workspace:FindFirstChild("HauntedHouses")
-	if not folder then return {} end
-	local list = {}
-	for _, child in ipairs(folder:GetChildren()) do
-		local part = getEggPart(child)
-		if part and part.Parent then
-			table.insert(list, { obj = child, part = part, hp = getEggHealth(child), num = getHauntedHouseNum(child) })
-		end
-	end
-	table.sort(list, function(a, b)
-		return a.num < b.num
-	end)
-	return list
-end
-
-local function hasRefreshedLowerTarget(curNum, curObj)
-	local folder = workspace:FindFirstChild("HauntedHouses")
-	if not folder then return false end
-	for _, child in ipairs(folder:GetChildren()) do
-		if child ~= curObj then
-			local num = getHauntedHouseNum(child)
-			if num < curNum then
-				local hpNow = getEggHealth(child)
-				if hpNow == nil or hpNow > 0 then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
-
-local function startAutoHauntedHouse()
-	if autoHauntedHouseConn then return end
-	autoHauntedHouseConn = task.spawn(function()
-		while autoHauntedHouse do
-			while autoHauntedHouse and activityPriorityActive(2) do
-				task.wait(0.5)
-			end
-			if not autoHauntedHouse then break end
-			local targets = collectHauntedHouses()
-			if #targets == 0 then
-				task.wait(2)
-			else
-				local escaped = false
-				for _, t in ipairs(targets) do
-					if not autoHauntedHouse then break end
-					local part = t.part
-					if not part or not part.Parent then break end
-					local obj = t.obj
-					local hpNow = getEggHealth(obj)
-					if hpNow ~= nil and hpNow <= 0 then break end
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					if not hrp then break end
-					local toObj = part.Position - hrp.Position
-					local flatDir = Vector3.new(toObj.X, 0, toObj.Z)
-					local standPos = part.Position
-					if flatDir.Magnitude >= 1 then
-						standPos = part.Position - flatDir.Unit * 5
-					else
-						standPos = part.Position - Vector3.new(5, 0, 0)
-					end
-					lockUtil.guardZone = nil
-					lockUtil.eggPos = part.Position
-					if not lockUtil.navWalk(standPos, 5, { brake = true }) then break end
-					local timeout = 60
-					local elapsed = 0
-					local lastHealth = humanoid and humanoid.Health or 100
-					local checkTimer = 0
-					while elapsed < timeout and autoHauntedHouse and not activityPriorityActive(2) do
-						if not part.Parent then break end
-						hpNow = getEggHealth(obj)
-						if hpNow ~= nil and hpNow <= 0 then break end
-						local dt = RunService.Heartbeat:Wait()
-						elapsed = elapsed + dt
-						checkTimer = checkTimer + dt
-						if checkTimer >= 2 then
-							checkTimer = 0
-							if hasRefreshedLowerTarget(t.num, obj) then
-								escaped = true
-								break
-							end
-						end
-						local curHealth = humanoid and humanoid.Health or lastHealth
-						local gotHit = curHealth < lastHealth - 0.5
-						lastHealth = curHealth
-						if not gotHit and char then
-							local hh = char:FindFirstChild("HumanoidRootPart")
-							if hh then
-								local dxx = hh.Position.X - standPos.X
-								local dzz = hh.Position.Z - standPos.Z
-								if (dxx * dxx + dzz * dzz) > 144 then gotHit = true end
-							end
-						end
-						if gotHit then
-							lockUtil.placeHover(standPos.X, standPos.Z, (getGroundY(standPos) or standPos.Y), 2)
-							lockCharacter()
-							local settleAtk = 0
-							local settleElapsed = 0
-							while settleElapsed < 0.5 and autoHauntedHouse do
-								if not part.Parent then break end
-								local dt2 = RunService.Heartbeat:Wait()
-								settleElapsed = settleElapsed + dt2
-								settleAtk = settleAtk + dt2
-								if settleAtk >= 0.1 then
-									attackEgg(part)
-									settleAtk = 0
-								end
-							end
-							unlockCharacter()
-						end
-						local h = char and char:FindFirstChild("HumanoidRootPart")
-						if h and part.Parent then
-							h.CFrame = CFrame.lookAt(h.Position, Vector3.new(part.Position.X, h.Position.Y, part.Position.Z))
-						end
-						if part.Parent then attackEgg(part) end
-					end
-					if escaped then break end
-				end
-			end
-			task.wait(0.5)
-		end
-		autoHauntedHouseConn = nil
-	end)
-end
 
 EGG_ALIAS = {
 	["Rock"] = "岩石蛋", ["Stone"] = "岩石蛋",
@@ -2811,8 +2264,12 @@ EGG_ALIAS = {
 	["Nebula"] = "星云蛋", ["Nebula Egg"] = "星云蛋",
 	["Supernova"] = "超新星蛋", ["Supernova Egg"] = "超新星蛋",
 	["Phantom"] = "幽灵蛋", ["Phantom Egg"] = "幽灵蛋",
-	["Skill"] = "技能蛋", ["Skill Egg"] = "技能蛋",
 	["LockedEgg"] = "锁定蛋", ["Locked Egg"] = "锁定蛋",
+	["LunaEgg"] = "月亮蛋", ["Luna Egg"] = "月亮蛋",
+	["FairyEgg"] = "仙女蛋", ["Fairy Egg"] = "仙女蛋",
+	["PhoenixEgg"] = "凤凰蛋", ["Phoenix Egg"] = "凤凰蛋",
+	["CrystalEgg"] = "水晶蛋", ["Crystal Egg"] = "水晶蛋",
+	["RoyalDragonEgg"] = "皇家龙蛋", ["Royal Dragon Egg"] = "皇家龙蛋",
 	["Skull"] = "骷髅蛋", ["Skull Egg"] = "骷髅蛋", ["Fortune Skull"] = "骷髅蛋", ["Fortune Skull Egg"] = "骷髅蛋",
 }
 
@@ -3377,36 +2834,14 @@ local Tabs = {
 
 local AnnounceTab = Tabs.Announce
 AnnounceTab:Section({ Title = "公告", TextXAlignment = "Left", TextSize = 17 })
+AnnounceTab:Paragraph({ Title = "11月4日", Desc = "增加新的区域蛋和新的宠物品质 增加自动领取图鉴奖励 增加新的稿子" })
 AnnounceTab:Paragraph({ Title = "10月26日", Desc = "增加新区域蛋和新的宠物品质 更新万圣节活动 提升传回成功率 修复透视蛋卡顿" })
 AnnounceTab:Paragraph({ Title = "10月13日", Desc = "已修复传送宠物 增加新区域蛋和宠物和品质 防卡顿升级" })
 AnnounceTab:Paragraph({ Title = "10月11日", Desc = "传送回拿宠物已绕过反作弊" })
 
 local ActivityTab = Tabs.Activity
 ActivityTab:Section({ Title = "活动", TextXAlignment = "Left", TextSize = 17 })
-ActivityTab:Toggle({ Title = "自动打糖果", Default = false, Callback = function(v)
-	autoCandy = v
-	if v then startAutoCandy() end
-end })
-ActivityTab:Toggle({ Title = "自动收集糖果玉米", Default = false, Callback = function(v)
-	autoCorn = v
-	if v then startAutoCorn() end
-end })
-ActivityTab:Toggle({ Title = "自动打鬼屋", Default = false, Callback = function(v)
-	autoHauntedHouse = v
-	if v then startAutoHauntedHouse() end
-end })
-ActivityTab:Toggle({ Title = "自动购买南瓜园蛋", Default = false, Callback = function(v)
-	autoBuyEgg1 = v
-	if v then startAutoBuyEgg1() end
-end })
-ActivityTab:Toggle({ Title = "自动购买稻草人蛋", Default = false, Callback = function(v)
-	autoBuyEgg2 = v
-	if v then startAutoBuyEgg2() end
-end })
-ActivityTab:Toggle({ Title = "自动购买骨之密室蛋", Default = false, Callback = function(v)
-	autoBuyEgg3 = v
-	if v then startAutoBuyEgg3() end
-end })
+ActivityTab:Paragraph({ Title = "并无活动可添加" })
 
 local PurchaseTab = Tabs.Purchase
 PurchaseTab:Section({ Title = "自动升级", TextXAlignment = "Left", TextSize = 17 })
@@ -3415,25 +2850,43 @@ PurchaseTab:Toggle({ Title = "自动升级宠物格子", Default = false, Callba
 	if v then startAutoUpgradePlot() end
 end })
 PurchaseTab:Section({ Title = "稿子商店", TextXAlignment = "Left", TextSize = 17 })
-autoBuyPickaxeToggle = PurchaseTab:Toggle({ Title = "自动购买稿子", Default = false, Callback = function(v)
-	autoBuyPickaxe = v
-	if v then startAutoBuyPickaxe() end
-end })
+pickaxeNames = {}
 for i, item in ipairs(PICKAXE_SHOP) do
-	PurchaseTab:Button({ Title = (item.title or (item.cn .. "稿子")), Callback = function()
-		buyPickaxe(i)
-	end })
+	pickaxeNames[i] = (item.title or (item.cn .. "稿子"))
 end
-PurchaseTab:Section({ Title = "踪迹商店", TextXAlignment = "Left", TextSize = 17 })
-autoBuyTrailToggle = PurchaseTab:Toggle({ Title = "自动购买踪迹", Default = false, Callback = function(v)
-	autoBuyTrail = v
-	if v then startAutoBuyTrail() end
+PurchaseTab:Dropdown({ Title = "选择稿子", Values = pickaxeNames, Value = "", AllowNone = true, Callback = function(v)
+	selectedPickaxeIdx = nil
+	for i, item in ipairs(PICKAXE_SHOP) do
+		if (item.title or (item.cn .. "稿子")) == v then
+			selectedPickaxeIdx = i
+			break
+		end
+	end
 end })
+PurchaseTab:Button({ Title = "购买选中稿子", Callback = function()
+	if selectedPickaxeIdx then
+		buyPickaxe(selectedPickaxeIdx)
+	end
+end })
+PurchaseTab:Section({ Title = "踪迹商店", TextXAlignment = "Left", TextSize = 17 })
+trailNames = {}
 for i, item in ipairs(TRAIL_SHOP) do
-	PurchaseTab:Button({ Title = (item.title or (item.cn .. "踪迹")), Callback = function()
-		buyTrail(i)
-	end })
+	trailNames[i] = (item.title or (item.cn .. "踪迹"))
 end
+PurchaseTab:Dropdown({ Title = "选择踪迹", Values = trailNames, Value = "", AllowNone = true, Callback = function(v)
+	selectedTrailIdx = nil
+	for i, item in ipairs(TRAIL_SHOP) do
+		if (item.title or (item.cn .. "踪迹")) == v then
+			selectedTrailIdx = i
+			break
+		end
+	end
+end })
+PurchaseTab:Button({ Title = "购买选中踪迹", Callback = function()
+	if selectedTrailIdx then
+		buyTrail(selectedTrailIdx)
+	end
+end })
 local antiLag = false
 local antiLagTask = nil
 local Lighting = game:GetService("Lighting")
@@ -3630,6 +3083,10 @@ MainTab:Section({ Title = "其他", TextXAlignment = "Left", TextSize = 17 })
 MainTab:Toggle({ Title = "自动装备最好宠物", Default = false, Callback = function(v)
 	autoEquipBest = v
 	if v then startAutoEquipBest() end
+end })
+MainTab:Toggle({ Title = "自动领取图鉴奖励", Default = false, Callback = function(v)
+	autoClaimDex = v
+	if v then startAutoClaimDex() end
 end })
 MainTab:Toggle({ Title = "防挂机", Default = false, Callback = function(v)
 	antiAFK = v
