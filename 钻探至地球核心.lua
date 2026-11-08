@@ -38,6 +38,7 @@ local GodMode = {
     OldCF = CFrame.new(),
     StepName1 = "",
     StepName2 = "",
+    WantActive = false,
 }
 
 local function RandomString()
@@ -479,7 +480,13 @@ end
 local GodBox = Tabs.Main:AddLeftGroupbox("无敌", "shield")
 Toggles.GodMode = GodBox:AddToggle("GodMode", { Text = "<font color=\"#ff0000\">启用无敌</font>", Default = false }):AddKeyPicker("GodModeBind", { Default = "F", SyncToggleState = true, Mode = "Toggle" })
 Toggles.GodMode:OnChanged(function(Value)
+    GodMode.WantActive = Value
     GodMode.Update(Value)
+    UpdateQuickBtn()
+end)
+Toggles.GodModeQuickBar = GodBox:AddToggle("GodModeQuickBar", { Text = "显示无敌快捷栏", Default = false })
+Toggles.GodModeQuickBar:OnChanged(function(Value)
+    if QuickGui then QuickGui.Enabled = Value end
 end)
 GodMode.Depth = 20
 
@@ -1783,9 +1790,95 @@ SaveManager:SetLibrary(Library)
 
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-SaveManager:SetFolder("GodModeAttack/Configs_v167")
+SaveManager:SetFolder("GodModeAttack/Configs_v182")
 
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 
 SaveManager:LoadAutoloadConfig()
+
+QuickGui = Instance.new("ScreenGui")
+QuickGui.Name = "GodModeQuickBar"
+QuickGui.ResetOnSpawn = false
+QuickGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+QuickGui.Enabled = Toggles.GodModeQuickBar.Value
+local okParent = pcall(function() QuickGui.Parent = game:GetService("CoreGui") end)
+if not okParent then QuickGui.Parent = Player.PlayerGui end
+
+QuickFrame = Instance.new("Frame")
+QuickFrame.Name = "GodModeQuickBarFrame"
+QuickFrame.Size = UDim2.fromOffset(120, 72)
+QuickFrame.Position = UDim2.new(0.5, -320, 0.5, -75)
+QuickFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+QuickFrame.BackgroundTransparency = 0.3
+QuickFrame.BorderSizePixel = 0
+QuickFrame.Active = true
+local quickCorner = Instance.new("UICorner")
+quickCorner.CornerRadius = UDim.new(0, 14)
+quickCorner.Parent = QuickFrame
+QuickFrame.Parent = QuickGui
+
+QuickBtn = Instance.new("TextButton")
+QuickBtn.Name = "GodModeQuickBtn"
+QuickBtn.Size = UDim2.new(1, -8, 1, -8)
+QuickBtn.Position = UDim2.new(0, 4, 0, 4)
+QuickBtn.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
+QuickBtn.BorderSizePixel = 0
+QuickBtn.Text = "无敌"
+QuickBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+QuickBtn.TextSize = 20
+QuickBtn.Font = Enum.Font.GothamBold
+QuickBtn.AutoButtonColor = true
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 10)
+btnCorner.Parent = QuickBtn
+local btnStroke = Instance.new("UIStroke")
+btnStroke.Thickness = 2
+btnStroke.Color = Color3.fromRGB(220, 90, 90)
+btnStroke.Parent = QuickBtn
+QuickBtn.Parent = QuickFrame
+
+function UpdateQuickBtn()
+    if not QuickBtn then return end
+    local on = GodMode.WantActive
+    QuickBtn.Text = on and "无敌 开" or "无敌 关"
+    QuickBtn.BackgroundColor3 = on and Color3.fromRGB(46, 125, 70) or Color3.fromRGB(150, 55, 55)
+    if btnStroke then btnStroke.Color = on and Color3.fromRGB(90, 200, 120) or Color3.fromRGB(220, 90, 90) end
+end
+
+local quickDragging = false
+local quickDownPos = nil
+local quickOffset = nil
+local quickDragged = false
+
+QuickBtn.MouseButton1Down:Connect(function(x, y)
+    quickDragging = true
+    quickDownPos = Vector2.new(x, y)
+    quickDragged = false
+    local fr = QuickFrame.AbsolutePosition
+    quickOffset = Vector2.new(x - fr.X, y - fr.Y)
+end)
+
+QuickBtn.MouseMoved:Connect(function(x, y)
+    if not quickDragging then return end
+    local pos = Vector2.new(x, y)
+    if not quickDragged and quickDownPos and (pos - quickDownPos).Magnitude > 10 then
+        quickDragged = true
+    end
+    if quickDragged and quickOffset then
+        QuickFrame.Position = UDim2.fromOffset(pos.X - quickOffset.X, pos.Y - quickOffset.Y)
+    end
+end)
+
+QuickBtn.MouseButton1Up:Connect(function()
+    quickDragging = false
+    quickDownPos = nil
+    quickOffset = nil
+end)
+
+QuickBtn.MouseButton1Click:Connect(function()
+    if quickDragged then return end
+    Toggles.GodMode:SetValue(not Toggles.GodMode.Value)
+    UpdateQuickBtn()
+end)
+
