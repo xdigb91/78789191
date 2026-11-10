@@ -103,12 +103,15 @@ local EGG_DATA = {
 	{ en = "Supernova", cn = "超新星蛋", weight = 8000000, rarity = "Celestial" },
 	{ en = "Phantom", cn = "幽灵蛋", weight = 9000000, rarity = "Spectral" },
 	{ en = "Skull", cn = "骷髅蛋", weight = 10500000, rarity = "Spectral" },
-	{ en = "LockedEgg", cn = "锁定蛋", weight = 11000000, rarity = "Spectral" },
+	{ en = "LockedEgg", cn = "封印之蛋", weight = 11000000, rarity = "Spectral" },
 	{ en = "LunaEgg", cn = "月亮蛋", weight = 11500000, rarity = "Spectral" },
-	{ en = "FairyEgg", cn = "仙女蛋", weight = 12000000, rarity = "Spectral" },
+	{ en = "FairyEgg", cn = "精灵蛋", weight = 12000000, rarity = "Spectral" },
 	{ en = "PhoenixEgg", cn = "凤凰蛋", weight = 12500000, rarity = "Spectral" },
 	{ en = "CrystalEgg", cn = "水晶蛋", weight = 13000000, rarity = "Spectral" },
 	{ en = "RoyalDragonEgg", cn = "皇家龙蛋", weight = 13500000, rarity = "Spectral" },
+	{ en = "CrackedEgg", cn = "碎裂蛋", weight = 14000000, rarity = "Spectral" },
+	{ en = "CastleEgg", cn = "城堡蛋", weight = 14500000, rarity = "Spectral" },
+	{ en = "LionEgg", cn = "狮子鸡蛋", weight = 15000000, rarity = "Spectral" },
 }
 
 local EGG_CN_TO_EN = {}
@@ -307,8 +310,9 @@ RARITY_CN = {
 	Cosmic = "宇宙", Secret = "秘密", Eternal = "永恒",
 	HUGE = "巨大", Huge = "巨大", TITANIC = "泰坦", Titanic = "泰坦",
 	Celestial = "天界", Hell = "地狱",
-	Spectral = "幽魂",
+	Spectral = "光谱",
 	Ethereal = "缥缈",
+	Primordial = "原始",
 	Void = "虚空", Omega = "欧米伽",
 }
 
@@ -321,16 +325,18 @@ RARITY_COLOR = {
 	Celestial = "#FFE066", Hell = "#B22222",
 	Spectral = "#00CED1",
 	Ethereal = "#E0FFFF",
+	Primordial = "#DAA520",
 	Void = "#4B0082", Omega = "#FF8C00",
 }
 
-PET_RARITY_OPTIONS = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "天界", "地狱", "虚空", "欧米伽", "幽魂", "缥缈" }
+PET_RARITY_OPTIONS = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "天界", "地狱", "虚空", "欧米伽", "光谱", "缥缈", "原始" }
 
 local selectedEggEnglish = {}
 local selectedPetRarities = {}
 
 local petEspFilter = {}
 local eggEspFilter = {}
+local eggFilterCount = 0
 
 local function updateSavedSpeed()
 	if humanoid and humanoid.Parent and humanoid.WalkSpeed > 0 then
@@ -1003,9 +1009,9 @@ local function getEggHealth(obj)
 	return hp
 end
 
-PET_PREFIX_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Fortune", "Lucky", "Gold", "Sun", "Solar", "Starry", "Star", "Blackhole", "BlackHole", "Volcanic", "Lava", "Blossom", "Flower", "Bamboo", "Angel", "Holy", "Fallen", "FallenAngel", "Rift", "Void", "Celestial", "Omega", "Sea", "Ocean", "Lake", "Frozen", "Ice", "Snow", "Yeti", "Rainbow", "Candy", "Tree", "Wood", "Rock", "Stone", "Forest", "Cactus", "Desert", "Bones", "Bone", "Skeleton", "Scorpion", "Easter", "Gooey", "Slime", "Sticky", "Swamp", "Water", "Aqua", "Spectral", "Ethereal" }
+PET_PREFIX_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Fortune", "Lucky", "Gold", "Sun", "Solar", "Starry", "Star", "Blackhole", "BlackHole", "Volcanic", "Lava", "Blossom", "Flower", "Bamboo", "Angel", "Holy", "Fallen", "FallenAngel", "Rift", "Void", "Celestial", "Omega", "Sea", "Ocean", "Lake", "Frozen", "Ice", "Snow", "Yeti", "Rainbow", "Candy", "Tree", "Wood", "Rock", "Stone", "Forest", "Cactus", "Desert", "Bones", "Bone", "Skeleton", "Scorpion", "Easter", "Gooey", "Slime", "Sticky", "Swamp", "Water", "Aqua", "Spectral", "Ethereal", "Primordial" }
 
-PET_PREFIX_WORDS.cn = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "巨大", "泰坦", "天界", "虚空", "欧米伽", "幽魂", "缥缈" }
+PET_PREFIX_WORDS.cn = { "普通", "罕见", "稀有", "史诗", "传说", "神话", "宇宙", "秘密", "永恒", "神圣", "巨大", "泰坦", "天界", "虚空", "欧米伽", "光谱", "缥缈", "原始" }
 
 local function stripNamePrefix(raw)
 	if not raw then return raw end
@@ -1059,7 +1065,7 @@ local function normalizePetName(raw)
 	return nil
 end
 
-RARITY_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Celestial", "Heaven", "Heavenly", "Hell", "Hades", "Infernal", "Inferno", "Underworld", "Nether", "Void", "Omega", "Spectral", "Ethereal" }
+RARITY_WORDS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Mythical", "Cosmic", "Secret", "Eternal", "Divine", "HUGE", "Huge", "TITANIC", "Titanic", "Celestial", "Heaven", "Heavenly", "Hell", "Hades", "Infernal", "Inferno", "Underworld", "Nether", "Void", "Omega", "Spectral", "Ethereal", "Primordial" }
 
 RARITY_ALIAS_EN = {
 	Mythical = "Mythic", Heaven = "Celestial", Heavenly = "Celestial",
@@ -1072,8 +1078,9 @@ RARITY_CN_TO_EN = {
 	["宇宙"] = "Cosmic", ["秘密"] = "Secret", ["永恒"] = "Eternal",
 	["神圣"] = "Divine", ["天界"] = "Celestial", ["地狱"] = "Hell",
 	["虚空"] = "Void", ["欧米伽"] = "Omega",
-	["幽魂"] = "Spectral",
+	["光谱"] = "Spectral",
 	["缥缈"] = "Ethereal",
+	["原始"] = "Primordial",
 }
 
 local function extractRarityFromName(raw)
@@ -1691,8 +1698,10 @@ local PICKAXE_SHOP = {
 	{ name = "Enchanted", cn = "附魔" },
 	{ name = "Haunted", cn = "万圣节", price = "1Qi" },
 	{ name = "Castle", cn = "城堡", price = "2Qi" },
-	{ name = "Fairy", cn = "仙女", price = "5Qi" },
+	{ name = "Fairy", cn = "精灵", price = "5Qi" },
 	{ name = "Dragon", cn = "龙", price = "25Qi" },
+	{ name = "Royal Pickaxe", cn = "皇家", price = "50Qi" },
+	{ name = "Elite Pickaxe", cn = "精英", price = "100Qi" },
 }
 local TRAIL_SHOP = {
 	{ name = "White", cn = "白色" },
@@ -1706,7 +1715,7 @@ local TRAIL_SHOP = {
 	{ name = "Secret", cn = "秘密" },
 	{ name = "Laser", cn = "激光" },
 	{ name = "Moonlight", cn = "月光" },
-	{ name = "Spooky", cn = "幽灵", price = "1.5Qa" },
+	{ name = "Spooky", cn = "阴森", price = "1.5Qa" },
 }
 local PickaxeShopRequest = ReplicatedStorage:FindFirstChild("PickaxeShopRequest")
 local TrailShopRequest = ReplicatedStorage:FindFirstChild("TrailShopRequest")
@@ -1869,7 +1878,6 @@ local function walkStraightTo(targetPos, arriveDist)
 	local maxTime = 30
 	local baseSpd = getCurrentSpeed()
 	if baseSpd < 1 then baseSpd = 1 end
-	-- 防跑步机速度污染：基础速度异常高时按普通走路速度走，避免悬空快跑
 	if baseSpd > 30 then baseSpd = 16 end
 	local function restoreSpd()
 		if humanoid and humanoid.Parent then
@@ -1923,7 +1931,6 @@ local function walkStraightTo(targetPos, arriveDist)
 			if stallT > 0.4 then
 				stallT = 0
 				stuckN += 1
-				-- 纯直线：卡住不做侧移扭动，连续卡住则退出，等下一轮再走
 				if stuckN > 10 then break end
 			end
 		else
@@ -2000,14 +2007,12 @@ local function startAutoHome()
 				if curHrp then
 					local curPos = curHrp.Position
 					local treadGoal = treadSpot and treadSpot.WorldPosition or (treadPart and treadPart.Position)
-					-- 目标点压到可站立表面，避免角色被引导到履带上方悬空
 					if treadGoal then
 						local gY = getGroundY(treadGoal, true)
 						if gY then treadGoal = Vector3.new(treadGoal.X, gY, treadGoal.Z) end
 					end
 					local homePos = homePart and homePart.Position
 					local treadDist = treadGoal and (treadGoal - curPos).Magnitude
-					-- 已在跑步机模型上/范围内（含被带动跑动）：不干预，保持自然状态
 					local onTread = false
 					if treadmill then
 						local tbPos, tbSize = nil, nil
@@ -2025,9 +2030,7 @@ local function startAutoHome()
 						end
 					end
 					if onTread then
-						-- 角色已在跑步机上：不干预
 					elseif treadDist and treadDist <= 8 then
-						-- 已在跑步机附近：不干预，保持自然状态
 					else
 						local targetPos = nil
 						local targetStraight = false
@@ -2038,7 +2041,6 @@ local function startAutoHome()
 							targetStraight = true
 						end
 						if targetPos then
-							-- 走路期间不锁定：lockCharacter 会抬离地面锁Y，导致腿悬空"走路"
 							unlockCharacter()
 							if targetStraight then
 								walkStraightTo(targetPos, 2)
@@ -2264,12 +2266,15 @@ EGG_ALIAS = {
 	["Nebula"] = "星云蛋", ["Nebula Egg"] = "星云蛋",
 	["Supernova"] = "超新星蛋", ["Supernova Egg"] = "超新星蛋",
 	["Phantom"] = "幽灵蛋", ["Phantom Egg"] = "幽灵蛋",
-	["LockedEgg"] = "锁定蛋", ["Locked Egg"] = "锁定蛋",
+	["LockedEgg"] = "封印之蛋", ["Locked Egg"] = "封印之蛋",
 	["LunaEgg"] = "月亮蛋", ["Luna Egg"] = "月亮蛋",
-	["FairyEgg"] = "仙女蛋", ["Fairy Egg"] = "仙女蛋",
+	["FairyEgg"] = "精灵蛋", ["Fairy Egg"] = "精灵蛋",
 	["PhoenixEgg"] = "凤凰蛋", ["Phoenix Egg"] = "凤凰蛋",
 	["CrystalEgg"] = "水晶蛋", ["Crystal Egg"] = "水晶蛋",
 	["RoyalDragonEgg"] = "皇家龙蛋", ["Royal Dragon Egg"] = "皇家龙蛋",
+	["CrackedEgg"] = "碎裂蛋", ["Cracked Egg"] = "碎裂蛋",
+	["CastleEgg"] = "城堡蛋", ["Castle Egg"] = "城堡蛋",
+	["LionEgg"] = "狮子鸡蛋", ["Lion Egg"] = "狮子鸡蛋",
 	["Skull"] = "骷髅蛋", ["Skull Egg"] = "骷髅蛋", ["Fortune Skull"] = "骷髅蛋", ["Fortune Skull Egg"] = "骷髅蛋",
 }
 
@@ -2335,12 +2340,9 @@ local function scanAll(obj)
 		if d ~= obj then
 			local dAttrs = d:GetAttributes()
 			for name, value in pairs(dAttrs) do consider(name, value) end
-		end
-	end
-
-	for _, d in ipairs(obj:GetDescendants()) do
-		if d:IsA("StringValue") or d:IsA("IntValue") or d:IsA("NumberValue") or d:IsA("BoolValue") then
-			consider(d.Name, d.Value)
+			if d:IsA("StringValue") or d:IsA("IntValue") or d:IsA("NumberValue") or d:IsA("BoolValue") then
+				consider(d.Name, d.Value)
+			end
 		end
 	end
 
@@ -2502,11 +2504,7 @@ local function buildPetText(obj)
 end
 
 local function matchesEggFilter(obj)
-	local selectedCount = 0
-	for _ in pairs(eggEspFilter) do
-		selectedCount += 1
-	end
-	if selectedCount == 0 then return true end
+	if eggFilterCount == 0 then return true end
 
 	local eggName = normalizeEggName(obj.Name, obj)
 	if not eggName then return false end
@@ -2528,15 +2526,23 @@ end
 
 local petEspCache = {}
 local eggEspCache = {}
+local eggTextCache = {}
+local eggFoldersHooked = {}
 
 local function createEsp(obj, cache, name, isPet)
 	if cache[obj] then return end
 
-	local text = isPet and buildPetText(obj) or buildEggText(obj)
-	if not text then return end
-
 	if isPet and not matchesPetFilter(obj) then return end
 	if not isPet and not matchesEggFilter(obj) then return end
+
+	local text
+	if isPet then
+		text = buildPetText(obj)
+	else
+		text = eggTextCache[obj] or buildEggText(obj)
+		if text then eggTextCache[obj] = text end
+	end
+	if not text then return end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = name
@@ -2564,10 +2570,11 @@ local function createEsp(obj, cache, name, isPet)
 	cache[obj] = { billboard = billboard, label = label, lastText = label.Text }
 end
 
-local function removeEsp(obj, cache)
+local function removeEsp(obj, cache, isPet)
 	local cached = cache[obj]
 	if cached and cached.billboard then cached.billboard:Destroy() end
 	cache[obj] = nil
+	if isPet == false then eggTextCache[obj] = nil end
 end
 
 local function updateEsp(cache, isPet, refreshText)
@@ -2575,8 +2582,15 @@ local function updateEsp(cache, isPet, refreshText)
 		if not obj.Parent then
 			if cached.billboard then cached.billboard:Destroy() end
 			cache[obj] = nil
+			if isPet == false then eggTextCache[obj] = nil end
 		elseif refreshText then
-			local text = isPet and buildPetText(obj) or buildEggText(obj)
+			local text
+			if isPet then
+				text = buildPetText(obj)
+			else
+				text = eggTextCache[obj] or buildEggText(obj)
+				if text then eggTextCache[obj] = text end
+			end
 			local visible = true
 			if not text then
 				visible = false
@@ -2589,6 +2603,7 @@ local function updateEsp(cache, isPet, refreshText)
 			if not visible then
 				if cached.billboard then cached.billboard:Destroy() end
 				cache[obj] = nil
+				if isPet == false then eggTextCache[obj] = nil end
 			elseif text ~= cached.lastText then
 				cached.label.Text = text
 				cached.lastText = text
@@ -2604,6 +2619,17 @@ local function refreshPetEsp()
 	end
 end
 
+local function hookEggFolder(folder)
+	if eggFoldersHooked[folder] then return end
+	eggFoldersHooked[folder] = true
+	folder.ChildAdded:Connect(function(egg)
+		if eggEspEnabled and getEggPart(egg) then
+			task.wait(0.1)
+			if egg.Parent then createEsp(egg, eggEspCache, "EggBB", false) end
+		end
+	end)
+end
+
 local function collectAllEggs()
 	local list = {}
 	local zoneBuilds = workspace.Build and workspace.Build:FindFirstChild("ZoneBuilds")
@@ -2611,6 +2637,7 @@ local function collectAllEggs()
 	for _, zone in ipairs(zoneBuilds:GetChildren()) do
 		local eggsFolder = zone:FindFirstChild("Eggs")
 		if eggsFolder then
+			hookEggFolder(eggsFolder)
 			for _, egg in ipairs(eggsFolder:GetChildren()) do
 				if getEggPart(egg) then table.insert(list, egg) end
 			end
@@ -2665,8 +2692,9 @@ task.spawn(function()
 	while true do
 		if eggEspEnabled then
 			tick = tick + 1
-			updateEsp(eggEspCache, false, tick % 10 == 0)
-			if tick % 10 == 5 then
+			updateEsp(eggEspCache, false, tick % 60 == 0)
+			if tick % 60 == 30 then
+				eggTextCache = {}
 				refreshEggEsp()
 			end
 		end
@@ -2834,6 +2862,7 @@ local Tabs = {
 
 local AnnounceTab = Tabs.Announce
 AnnounceTab:Section({ Title = "公告", TextXAlignment = "Left", TextSize = 17 })
+AnnounceTab:Paragraph({ Title = "11月9日", Desc = "增加新的扩展区域 增加新的鸡蛋 增加新的宠物品质" })
 AnnounceTab:Paragraph({ Title = "11月4日", Desc = "增加新的区域蛋和新的宠物品质 增加自动领取图鉴奖励 增加新的稿子" })
 AnnounceTab:Paragraph({ Title = "10月26日", Desc = "增加新区域蛋和新的宠物品质 更新万圣节活动 提升传回成功率 修复透视蛋卡顿" })
 AnnounceTab:Paragraph({ Title = "10月13日", Desc = "已修复传送宠物 增加新区域蛋和宠物和品质 防卡顿升级" })
@@ -2922,6 +2951,18 @@ local function deleteZoneDecor()
 			local node = zone:FindFirstChild(spec[2])
 			if node then
 				pcall(function() node:Destroy() end)
+			end
+		end
+	end
+	local castleZone = zoneBuilds:FindFirstChild("Zone12")
+	if castleZone then
+		local castleMap = castleZone:FindFirstChild("CastleMap")
+		if castleMap then
+			for _, subName in ipairs({ "Wall", "Tower", "Symbol", "Sakura", "Moutnain", "Limit", "Grass", "Crystal" }) do
+				local sub = castleMap:FindFirstChild(subName)
+				if sub then
+					pcall(function() sub:Destroy() end)
+				end
 			end
 		end
 	end
@@ -3158,7 +3199,9 @@ EspTab:Toggle({ Title = "宠物透视", Default = false, Callback = function(v)
 end })
 EspTab:Dropdown({ Title = "蛋透视筛选", Values = EGG_OPTIONS, Value = {}, Multi = true, AllowNone = true, Callback = function(Values)
 	eggEspFilter = {}
+	eggFilterCount = 0
 	if type(Values) == "table" then
+		eggFilterCount = #Values
 		for _, d in ipairs(Values) do
 			local cn = (type(d) == "table" and d.Title) or d
 			eggEspFilter[cn] = true
