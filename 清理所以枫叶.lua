@@ -1,348 +1,580 @@
-local __XJW_LIB_CACHE = "xjw_windui_lib.lua"
-local __XJW_LIB_URLS = {
-    "https://cdn.jsdelivr.net/gh/finendss/VowLibrary@main/WINDUI.lua",
-    "https://raw.githubusercontent.com/finendss/VowLibrary/refs/heads/main/WINDUI.lua",
-}
-local __XJW_ICON_SRC = [==[
--- This is a new version
 
-local cloneref = (cloneref or clonereference or function(instance)
-	return instance
-end)
+	local OBSIDIAN_REPO = "https://gitlab.com/aristooey/Obsidian/-/raw/main/"
 
-local RunService = cloneref(game:GetService("RunService"))
-local HttpService = cloneref(game:GetService("HttpService"))
-local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+	local OkLoad, Library = pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "Library.lua"))()
+	end)
 
-local function IsExploit()
-	return request and true or false
-end
-
-local function Get(url)
-	if IsExploit() then
-		return game:HttpGet(url)
-	else
-		local Success, Result = pcall(function()
-			return HttpService:GetAsync(url)
-		end)
-		if Success then
-			return Result
-		else
-			return ReplicatedStorage:WaitForChild("Request", 9999):InvokeServer({ Url = url })
-		end
-	end
-end
-
-local function Loadstring(src)
-	if not IsExploit() and ReplicatedStorage:WaitForChild("Loadstring", 9999) then
-		return function()
-			return ReplicatedStorage:WaitForChild("Loadstring", 9999):InvokeServer(src)
-		end
-	else
-		return loadstring(src)
-	end
-end
-
-local IconModule = {
-	IconsType = "lucide",
-
-	New = nil,
-	IconThemeTag = nil,
-
-	Icons = {
-		lucide = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/lucide/dist/Icons.lua")
-		)() or require("./lucide/dist/Icons"),
-		solar = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/solar/dist/Icons.lua")
-		)() or require("./solar/dist/Icons"),
-		craft = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/craft/dist/Icons.lua")
-		)() or require("./craft/dist/Icons"),
-		geist = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/geist/dist/Icons.lua")
-		)() or require("./geist/dist/Icons"),
-		sfsymbols = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/sfsymbols/dist/Icons.lua")
-		)() or require("./sfsymbols/dist/Icons"),
-		gravity = IsExploit() and Loadstring(
-			Get("https://raw.githubusercontent.com/Footagesus/Icons/refs/heads/main/gravity/dist/Icons.lua")
-		)() or require("./gravity/dist/Icons"),
-	},
-}
-
-local function parseIconString(iconString)
-	if type(iconString) == "string" then
-		local splitIndex = iconString:find(":")
-		if splitIndex then
-			local iconType = iconString:sub(1, splitIndex - 1)
-			local iconName = iconString:sub(splitIndex + 1)
-			return iconType, iconName
-		end
-	end
-	return nil, iconString
-end
-
-function IconModule.AddIcons(packName, iconsData)
-	if type(packName) ~= "string" or type(iconsData) ~= "table" then
-		error("AddIcons: packName must be string, iconsData must be table")
+	if not OkLoad or type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
 		return
 	end
 
-	if not IconModule.Icons[packName] then
-		IconModule.Icons[packName] = {
-			Icons = {},
-			Spritesheets = {},
-		}
+	local ThemeManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/ThemeManager.lua"))()
+	end))
+	local SaveManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/SaveManager.lua"))()
+	end))
+
+	Library.ThemeManager = ThemeManager
+	Library.SaveManager = SaveManager
+
+local function XJWCompat(Lib)
+	local Compat = {}
+	local seq = 0
+
+	local function nextId(prefix)
+		seq = seq + 1
+		return "XJW" .. prefix .. seq
 	end
 
-	for iconName, iconValue in pairs(iconsData) do
-		if type(iconValue) == "number" or (type(iconValue) == "string" and iconValue:match("^rbxassetid://")) then
-			local imageId = iconValue
-			if type(iconValue) == "number" then
-				imageId = "rbxassetid://" .. tostring(iconValue)
-			end
-
-			IconModule.Icons[packName].Icons[iconName] = {
-				Image = imageId,
-				ImageRectSize = Vector2.new(0, 0),
-				ImageRectPosition = Vector2.new(0, 0),
-				Parts = nil,
-			}
-			IconModule.Icons[packName].Spritesheets[imageId] = imageId
-		elseif type(iconValue) == "table" then
-			if iconValue.Image and iconValue.ImageRectSize and iconValue.ImageRectPosition then
-				local imageId = iconValue.Image
-				if type(imageId) == "number" then
-					imageId = "rbxassetid://" .. tostring(imageId)
-				end
-
-				IconModule.Icons[packName].Icons[iconName] = {
-					Image = imageId,
-					ImageRectSize = iconValue.ImageRectSize,
-					ImageRectPosition = iconValue.ImageRectPosition,
-					Parts = iconValue.Parts,
-				}
-
-				if not IconModule.Icons[packName].Spritesheets[imageId] then
-					IconModule.Icons[packName].Spritesheets[imageId] = imageId
-				end
-			else
-				warn("AddIcons: Invalid spritesheet data format for icon '" .. iconName .. "'")
-			end
-		else
-			warn("AddIcons: Unsupported data type for icon '" .. iconName .. "': " .. type(iconValue))
-		end
-	end
-end
-
-function IconModule.SetIconsType(iconType)
-	IconModule.IconsType = iconType
-end
-
-function IconModule.Init(New, IconThemeTag)
-	IconModule.New = New
-	IconModule.IconThemeTag = IconThemeTag
-
-	return IconModule
-end
-
-function IconModule.Icon(Icon, Type, DefaultFormat)
-	DefaultFormat = DefaultFormat ~= false
-	local iconType, iconName = parseIconString(Icon)
-
-	local targetType = iconType or Type or IconModule.IconsType
-	local targetName = iconName
-
-	local iconSet = IconModule.Icons[targetType]
-
-	if iconSet and iconSet.Icons and iconSet.Icons[targetName] then
-		return {
-			iconSet.Spritesheets[tostring(iconSet.Icons[targetName].Image)],
-			iconSet.Icons[targetName],
-		}
-	elseif iconSet and iconSet[targetName] and string.find(iconSet[targetName], "rbxassetid://") then
-		return DefaultFormat
-				and {
-					iconSet[targetName],
-					{ ImageRectSize = Vector2.new(0, 0), ImageRectPosition = Vector2.new(0, 0) },
-				}
-			or iconSet[targetName]
-	end
-	return nil
-end
-
-function IconModule.GetIcon(Icon, Type)
-	return IconModule.Icon(Icon, Type, false)
-end
-
-function IconModule.Icon2(Icon, Type, DefaultFormat)
-	return IconModule.Icon(Icon, Type, true)
-end
-
-function IconModule.Image(IconConfig)
-	local Icon = {
-		Icon = IconConfig.Icon or nil,
-		Type = IconConfig.Type,
-		Colors = IconConfig.Colors or { (IconModule.IconThemeTag or Color3.new(1, 1, 1)), Color3.new(1, 1, 1) },
-		Size = IconConfig.Size or UDim2.new(0, 24, 0, 24),
-
-		IconFrame = nil,
-	}
-
-	local Colors = {}
-
-	for _, color in next, Icon.Colors do
-		Colors[_] = {
-			ThemeTag = typeof(color) == "string" and color,
-			Color = typeof(color) == "Color3" and color,
-		}
+	local function call(fn)
+		local ok, res = pcall(fn)
+		if ok then return res end
+		return nil
 	end
 
-	local IconLabel = IconModule.Icon2(Icon.Icon, Icon.Type)
-	local isrbxassetid = typeof(IconLabel) == "string" and string.find(IconLabel, "rbxassetid://")
-
-	if IconModule.New then
-		local New = IconModule.New
-
-		local IconFrame = New("ImageLabel", {
-			Size = Icon.Size,
-			BackgroundTransparency = 1,
-			ImageColor3 = Colors[1].Color or nil,
-			ThemeTag = Colors[1].ThemeTag and {
-				ImageColor3 = Colors[1].ThemeTag,
-			},
-			Image = isrbxassetid and IconLabel or IconLabel[1],
-			ImageRectSize = isrbxassetid and nil or IconLabel[2].ImageRectSize,
-			ImageRectOffset = isrbxassetid and nil or IconLabel[2].ImageRectPosition,
+	local function phantom()
+		local t = setmetatable({}, {
+			__index = function(self, k)
+				local v = phantom()
+				rawset(self, k, v)
+				return v
+			end,
+			__newindex = function() end,
 		})
-
-		if not isrbxassetid and IconLabel[2].Parts then
-			for _, part in next, IconLabel[2].Parts do
-				local IconPartLabel = IconModule.Icon(part, Icon.Type)
-
-				local IconPart = New("ImageLabel", {
-					Size = UDim2.new(1, 0, 1, 0),
-					BackgroundTransparency = 1,
-					ImageColor3 = Colors[1 + _].Color or nil,
-					ThemeTag = Colors[1 + _].ThemeTag and {
-						ImageColor3 = Colors[1 + _].ThemeTag,
-					},
-					Image = IconPartLabel[1],
-					ImageRectSize = IconPartLabel[2].ImageRectSize,
-					ImageRectOffset = IconPartLabel[2].ImageRectPosition,
-					Parent = IconFrame,
-				})
-			end
-		end
-
-		Icon.IconFrame = IconFrame
-	else
-		local IconFrame = Instance.new("ImageLabel")
-		IconFrame.Size = Icon.Size
-		IconFrame.BackgroundTransparency = 1
-		IconFrame.ImageColor3 = Colors[1].Color
-		IconFrame.Image = isrbxassetid and IconLabel or IconLabel[1]
-		IconFrame.ImageRectSize = isrbxassetid and nil or IconLabel[2].ImageRectSize
-		IconFrame.ImageRectOffset = isrbxassetid and nil or IconLabel[2].ImageRectPosition
-
-		if not isrbxassetid and IconLabel[2].Parts then
-			for _, part in next, IconLabel[2].Parts do
-				local IconPartLabel = IconModule.Icon(part, Icon.Type)
-
-				local IconPart = Instance.New("ImageLabel")
-				IconPart.Size = UDim2.new(1, 0, 1, 0)
-				IconPart.BackgroundTransparency = 1
-				IconPart.ImageColor3 = Colors[1 + _].Color
-				IconPart.Image = IconPartLabel[1]
-				IconPart.ImageRectSize = IconPartLabel[2].ImageRectSize
-				IconPart.ImageRectOffset = IconPartLabel[2].ImageRectPosition
-				IconPart.Parent = IconFrame
-			end
-		end
-
-		Icon.IconFrame = IconFrame
+		return t
 	end
 
-	return Icon
-end
+	local function stub()
+		local s = setmetatable({}, {
+			__index = function(t, k)
+				local f = function() return t end
+				rawset(t, k, f)
+				return f
+			end,
+		})
+		return s
+	end
 
-return IconModule
+	local function toBool(v)
+		if v == true then return true end
+		if type(v) == "number" then return v ~= 0 end
+		if type(v) == "string" then return v == "true" or v == "1" end
+		return false
+	end
 
-]==]
+	local function wrap(ctrl)
+		if type(ctrl) ~= "table" then return ctrl end
+		if not ctrl.__xjwWrapped then
+			ctrl.__xjwWrapped = true
+			if type(ctrl.Set) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.Set = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.SetValues) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.SetValues = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.Get) ~= "function" then
+				ctrl.Get = function() return ctrl.Value end
+			end
+		end
+		return ctrl
+	end
 
-local __XJW_PG = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-local __XJW_TipLabel = nil
-if __XJW_PG then
-    local __XJW_Gui = Instance.new("ScreenGui")
-    __XJW_Gui.Name = "XJW_LoadTip"
-    __XJW_Gui.ResetOnSpawn = false
-    __XJW_Gui.IgnoreGuiInset = true
-    local __XJW_Lbl = Instance.new("TextLabel")
-    __XJW_Lbl.Size = UDim2.new(0, 430, 0, 0)
-    __XJW_Lbl.AutomaticSize = Enum.AutomaticSize.Y
-    __XJW_Lbl.Position = UDim2.new(0, 20, 0, 90)
-    __XJW_Lbl.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
-    __XJW_Lbl.BackgroundTransparency = 0.15
-    __XJW_Lbl.TextColor3 = Color3.fromRGB(255, 220, 120)
-    __XJW_Lbl.TextSize = 16
-    __XJW_Lbl.TextWrapped = true
-    __XJW_Lbl.Text = "清理所有枫叶：正在加载界面库..."
-    __XJW_Lbl.Parent = __XJW_Gui
-    __XJW_Gui.Parent = __XJW_PG
-    __XJW_TipLabel = __XJW_Lbl
-end
+	local makeContainer
 
-local function __XJW_SetTip(txt)
-    if __XJW_TipLabel then
-        __XJW_TipLabel.Text = "清理所有枫叶：" .. tostring(txt)
-    end
-end
+	makeContainer = function(real, isTab)
+		local box = {}
+		local implicit = nil
+		local activeReal = nil
+		local sectionSeq = 0
 
-local __XJW_SRC = nil
-if isfile and isfile(__XJW_LIB_CACHE) then
-    local __ok, __data = pcall(function() return readfile(__XJW_LIB_CACHE) end)
-    if __ok and type(__data) == "string" and #__data > 50000 then
-        __XJW_SRC = __data
-    end
-end
+		local function target()
+			if not real then return nil end
+			if isTab then
+				if activeReal then return activeReal end
+				if implicit then return implicit end
+				implicit = call(function() return real:AddLeftGroupbox("") end)
+				if not implicit then implicit = call(function() return real:AddRightGroupbox("") end) end
+				return implicit
+			end
+			return real
+		end
 
-if not __XJW_SRC then
-    for __i = 1, #__XJW_LIB_URLS do
-        __XJW_SetTip("正在联网取界面库 " .. tostring(__i) .. "/" .. tostring(#__XJW_LIB_URLS) .. "（约 270KB，请稍候）...")
-        local __ok, __data = pcall(function() return game:HttpGet(__XJW_LIB_URLS[__i]) end)
-        if __ok and type(__data) == "string" and #__data > 50000 then
-            __XJW_SRC = __data
-            if writefile then
-                pcall(function() writefile(__XJW_LIB_CACHE, __data) end)
-            end
-            break
-        end
-    end
-    if not __XJW_SRC then
-        __XJW_SetTip("界面库取回失败，请检查网络后重新执行一次")
-        return
-    end
-end
+		local function build(method, primary, fallback, idx)
+			local function attempt(info)
+				if not info then return nil end
+				local t = target()
+				if not t then return nil end
+				local fn = t[method]
+				if type(fn) ~= "function" then return nil end
+				local key = idx
+				if key == nil or key == "" then key = nextId(method) end
+				return call(function() return fn(t, key, info) end)
+			end
+			local ctrl = attempt(primary)
+			if not ctrl then ctrl = attempt(fallback) end
+			return wrap(ctrl)
+		end
 
-local __XJW_MARK = "loadstring(\ngame.HttpGetAsync and game:HttpGetAsync(l)or h:GetAsync(l)\n)()"
-local __XJW_A, __XJW_B = __XJW_SRC:find(__XJW_MARK, 1, true)
-if __XJW_A and #__XJW_ICON_SRC > 1000 then
-    __XJW_SRC = __XJW_SRC:sub(1, __XJW_A - 1) .. "loadstring([==[\n" .. __XJW_ICON_SRC .. "\n]==])()" .. __XJW_SRC:sub(__XJW_B + 1)
-end
+		function box:Section(info)
+			local title, icon = "", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or ""
+				icon = info.Icon
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not isTab or not real then return box end
+			sectionSeq = sectionSeq + 1
+			local gb
+			if sectionSeq % 2 == 1 then
+				gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end) end
+			else
+				gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end) end
+			end
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title)) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
 
-local __XJW_LIBOK, WindUI = pcall(function() return loadstring(__XJW_SRC)() end)
-if not __XJW_LIBOK or type(WindUI) ~= "table" then
-    __XJW_SetTip("界面库加载失败：" .. tostring(WindUI))
-    return
-end
-__XJW_SetTip("界面库加载成功")
-task.delay(4, function()
-    if __XJW_TipLabel and __XJW_TipLabel.Parent then
-        __XJW_TipLabel.Parent:Destroy()
-    end
+		function box:AddLeftGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:AddRightGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:Toggle(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or info.Name or "开关")
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local cb = info.Callback or info.Changed
+			local tip = info.Desc or info.Description
+			return build("AddToggle",
+				{ Text = text, Default = toBool(def), Callback = cb, Tooltip = tip },
+				{ Text = text, Default = toBool(def), Callback = cb })
+		end
+
+		function box:Slider(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local min = tonumber(info.Min) or 0
+			local max = tonumber(info.Max) or 100
+			local def = info.Default
+			if def == nil then def = info.Value end
+			if type(def) == "table" then
+				min = tonumber(def.Min) or min
+				max = tonumber(def.Max) or max
+				def = def.Default
+			end
+			if max < min then min, max = max, min end
+			def = math.clamp(tonumber(def) or min, min, max)
+			local step = tonumber(info.Step)
+			local rounding = 0
+			if step and step > 0 and step < 1 then
+				rounding = math.max(0, math.ceil(-math.log10(step) - 0.0000001))
+			end
+			local text = tostring(info.Title or info.Text or "滑块")
+			local cb = info.Callback or info.Changed
+			return build("AddSlider",
+				{ Text = text, Default = def, Min = min, Max = max, Rounding = rounding, Suffix = info.Suffix, Prefix = info.Prefix, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Default = def, Min = min, Max = max, Callback = cb })
+		end
+
+		function box:Dropdown(info)
+			if type(info) ~= "table" then info = { Values = {} } end
+			local values = info.Values or info.Options or {}
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local multi = info.Multi == true
+			if multi and type(def) ~= "table" then
+				def = nil
+			end
+			local text = tostring(info.Title or info.Text or "选择")
+			local cb = info.Callback or info.Changed
+			local ctrl = build("AddDropdown",
+				{ Text = text, Values = values, Multi = multi, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Values = values, Multi = multi },
+				text)
+			if ctrl and def ~= nil and type(ctrl.SetValue) == "function" then
+				task.defer(function()
+					pcall(function() ctrl:SetValue(def) end)
+				end)
+			end
+			return ctrl
+		end
+
+		function box:Button(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or "按钮")
+			local cb = info.Callback or info.Func
+			local t = target()
+			if not t then return wrap(nil) end
+
+			local ctrl = call(function() return t:AddButton({ Text = text, Func = cb, DoubleClick = info.DoubleClick }) end)
+			if not ctrl then
+				ctrl = call(function() return t:AddButton(nextId("AddButton"), { Text = text, Func = cb }) end)
+			end
+			return wrap(ctrl)
+		end
+
+		function box:Input(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local text = tostring(info.Title or info.Text or "输入")
+			return build("AddInput",
+				{ Text = text, Default = def == nil and "" or tostring(def), Placeholder = info.Placeholder and tostring(info.Placeholder) or "", Callback = info.Callback },
+				{ Text = text, Default = def == nil and "" or tostring(def) })
+		end
+
+		function box:Paragraph(info)
+			local text = ""
+			if type(info) == "table" then
+				local head = info.Title or info.Text or ""
+				local tail = info.Desc or info.Description or ""
+				text = tostring(head)
+				if tail ~= "" then text = text .. "  " .. tostring(tail) end
+			elseif info ~= nil then
+				text = tostring(info)
+			end
+			local t = target()
+			if t and type(t.AddLabel) == "function" then
+				call(function() return t:AddLabel(text) end)
+			end
+			return nil
+		end
+
+		function box:Label(info)
+			return box:Paragraph(info)
+		end
+
+		function box:Divider()
+			local t = target()
+			if t and type(t.AddDivider) == "function" then
+				call(function() return t:AddDivider() end)
+			end
+			return nil
+		end
+
+		function box:Keybind(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			return build("AddKeyPicker",
+				{ Text = tostring(info.Title or "按键"), Mode = info.Mode, Default = def, Callback = info.Callback, ChangedCallback = info.Changed },
+				{ Text = tostring(info.Title or "按键") })
+		end
+
+		function box:ColorPicker(info)
+			return stub()
+		end
+
+		function box:Textbox(info)
+			return box:Input(info)
+		end
+
+		return box
+	end
+
+	function Compat:CreateWindow(opt)
+		opt = opt or {}
+		local win = call(function()
+			return Lib:CreateWindow({
+				Title = tostring(opt.Title or "XJW"),
+				Footer = tostring(opt.Author or opt.Footer or "XJW"),
+			})
+		end)
+
+		if not win then
+			pcall(function() Lib:Notify("窗口创建失败, 请重新执行脚本", 5) end)
+		end
+
+		if win then
+			local usedTabs = {}
+			local rawAddTab = win.AddTab
+			if type(rawAddTab) == "function" then
+				pcall(function()
+					win.AddTab = function(self, ...)
+						local first = select(1, ...)
+						local name = first
+						if type(first) == "table" then name = first.Name or first.Title end
+						if name ~= nil then usedTabs[tostring(name)] = true end
+						return rawAddTab(self, ...)
+					end
+				end)
+			end
+
+			task.defer(function()
+				pcall(function()
+					local SettingsName = "UI设置"
+					if usedTabs[SettingsName] then SettingsName = "设置" end
+					local SettingsTab = win:AddTab(SettingsName, "settings")
+local MenuGroup = SettingsTab:AddLeftGroupbox("菜单")
+
+local LastUnloadAt
+
+MenuGroup:AddButton("卸载脚本", function()
+	local function DoUnload()
+		task.defer(function()
+			pcall(function()
+				Lib:Unload()
+			end)
+		end)
+	end
+
+	local OkDialog = pcall(function()
+		win:AddDialog("XJWUnloadConfirm", {
+			Title = "卸载脚本",
+			Description = "确定要卸载脚本吗？所有已启用的功能将被关闭，脚本随即终止。",
+			AutoDismiss = false,
+			OutsideClickDismiss = false,
+			FooterButtons = {
+				Cancel = {
+					Title = "取消",
+					Variant = "Ghost",
+					Order = 1,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+					end,
+				},
+				Unload = {
+					Title = "卸载",
+					Variant = "Destructive",
+					Order = 2,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+						DoUnload()
+					end,
+				},
+			},
+		})
+	end)
+
+	if OkDialog then
+		return
+	end
+
+	if not LastUnloadAt or (os.clock() - LastUnloadAt) > 5 then
+		LastUnloadAt = os.clock()
+		pcall(function()
+			Lib:Notify("再次点击「卸载脚本」确认卸载，5 秒内有效")
+		end)
+		return
+	end
+
+	LastUnloadAt = nil
+	DoUnload()
 end)
 
+MenuGroup:AddLabel("菜单快捷键")
+MenuGroup:AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	Visible = false,
+	Text = "菜单快捷键",
+})
+
+Lib.ToggleKeybind = Lib.Options and Lib.Options.MenuKeybind
+
+local ThemeManager = Lib.ThemeManager
+local SaveManager = Lib.SaveManager
+
+if type(ThemeManager) == "table" then
+	ThemeManager:SetLibrary(Lib)
+	ThemeManager:SetFolder("XJWUITheme")
+	ThemeManager:ApplyToTab(SettingsTab)
+end
+
+if type(SaveManager) == "table" then
+	SaveManager:SetLibrary(Lib)
+	SaveManager:SetFolder("XJWUIConfig")
+	SaveManager:BuildConfigSection(SettingsTab)
+end
+
+				end)
+			end)
+		end
+
+
+		local proxy = {}
+		proxy.IsPC = false
+		proxy.Window = win
+		proxy.OnClose = opt.OnClose
+		proxy.OnOpen = opt.OnOpen
+
+		function proxy:Tab(info)
+			local title, icon = "页面", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or "页面"
+				icon = info.Icon or info.IconName
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not win then return makeContainer(nil, false) end
+			local tab = call(function() return win:AddTab(tostring(title), icon, "") end)
+			if not tab then tab = call(function() return win:AddTab(tostring(title)) end) end
+			if not tab then tab = call(function() return win:AddTab({ Name = tostring(title), Icon = icon }) end) end
+			return makeContainer(tab, true)
+		end
+
+		function proxy:Tag()
+			return stub()
+		end
+
+		function proxy:EditOpenButton()
+			return stub()
+		end
+
+		function proxy:Dialog()
+			return stub()
+		end
+
+		function proxy:SelectTab()
+		end
+
+		function proxy:SetTheme()
+		end
+
+		function proxy:SetBackground()
+		end
+
+		function proxy:SetUIScale(v)
+			pcall(function()
+				Lib.UIScale = v
+				if type(Lib.ApplyUIScale) == "function" then Lib:ApplyUIScale(v) end
+			end)
+		end
+
+		function proxy:SetScale(v)
+			proxy:SetUIScale(v)
+		end
+
+		function proxy:AddDialog(idx, info)
+		if not win then return stub() end
+		local d = call(function() return win:AddDialog(idx, info) end)
+		if d == nil then return stub() end
+		return d
+	end
+
+	function proxy:Toggle(v)
+		if not win then return end
+		return call(function() return win:Toggle(v) end)
+	end
+
+	function proxy:Show()
+		return proxy:Toggle(true)
+	end
+
+	function proxy:Hide()
+		return proxy:Toggle(false)
+	end
+
+	function proxy:Destroy()
+		if not win then return end
+		return call(function() return win:Destroy() end)
+	end
+
+	proxy.UIElements = proxy.UIElements or phantom()
+
+	function proxy:Notify(info)
+			return Compat:Notify(info)
+		end
+
+		function proxy:SetWatermark() end
+
+		function proxy:SetToggleKey() end
+
+		function proxy:SetNotification() end
+
+		function proxy:SetTitle()
+		end
+
+		function proxy:Toggle(v)
+			if v == false then
+				proxy:Close()
+			else
+				proxy:Open()
+			end
+		end
+
+		function proxy:Open()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(true) end)
+			else
+				call(function() Lib:Toggle(true) end)
+			end
+			if type(proxy.OnOpen) == "function" then pcall(proxy.OnOpen) end
+		end
+
+		function proxy:Close()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(false) end)
+			else
+				call(function() Lib:Toggle(false) end)
+			end
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+		end
+
+		function proxy:Destroy()
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+			call(function() Lib:Unload() end)
+		end
+
+		function proxy:Unload()
+			proxy:Destroy()
+		end
+
+		return proxy
+	end
+
+	function Compat:Notify(info)
+		if type(info) ~= "table" then info = { Content = tostring(info) } end
+		local title = tostring(info.Title or info.Name or "提示")
+		local desc = tostring(info.Content or info.Description or info.Desc or info.Text or "")
+		local time = tonumber(info.Duration or info.Time or 4) or 4
+		local ok = pcall(function()
+			Lib:Notify({ Title = title, Description = desc, Time = time })
+		end)
+		if not ok then
+			pcall(function() Lib:Notify(title .. ": " .. desc) end)
+		end
+	end
+
+	function Compat:Unload()
+		call(function() Lib:Unload() end)
+	end
+
+	function Compat:SetTheme()
+	end
+
+	function Compat:SetColorScheme()
+	end
+
+	function Compat:SetUIScale()
+	end
+
+	Compat.Themes = setmetatable({}, { __index = function() return nil end })
+	Compat.Scheme = Lib.Scheme
+	Compat.Library = Lib
+	return Compat
+end
+
+local WindUI = XJWCompat(Library)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -396,13 +628,8 @@ local function Notify(tt, tx)
 end
 
 local Window = WindUI:CreateWindow({
-    Title = "清理所有枫叶",
-    Icon = "leaf",
-    Author = "XJW",
-    Folder = "LeafAutoFarm",
-    Size = UDim2.fromOffset(430, 480),
-    Theme = "Pink",
-    HideSearchBar = false,
+Title = "清理所有枫叶",
+Author = "XJW",
 })
 
 Window:EditOpenButton({
@@ -620,12 +847,10 @@ end
 local function getFixedDumpsterPos()
     local target = resolveFixedDumpster()
     if not target then
-        warn("[树叶自动拾取] 未找到 workspace.Map.Dumpsters.Dumpster，已回退为原动态选择逻辑。")
         return nil
     end
     local pos = getDumpsterPos(target)
     if not pos then
-        warn("[树叶自动拾取] workspace.Map.Dumpsters.Dumpster 无有效位置，已回退为原动态选择逻辑。")
         return nil
     end
     return pos

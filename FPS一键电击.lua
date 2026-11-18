@@ -1,18 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -21,15 +7,581 @@ local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local lp = Players.LocalPlayer
 
+	local OBSIDIAN_REPO = "https://gitlab.com/aristooey/Obsidian/-/raw/main/"
 
-local ok, WindUI = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/finendss/VowLibrary/refs/heads/main/WINDUI.lua"))()
+	local OkLoad, Library = pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "Library.lua"))()
+	end)
+
+	if not OkLoad or type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
+		return
+	end
+
+	local ThemeManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/ThemeManager.lua"))()
+	end))
+	local SaveManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/SaveManager.lua"))()
+	end))
+
+	Library.ThemeManager = ThemeManager
+	Library.SaveManager = SaveManager
+
+local function XJWCompat(Lib)
+	local Compat = {}
+	local seq = 0
+
+	local function nextId(prefix)
+		seq = seq + 1
+		return "XJW" .. prefix .. seq
+	end
+
+	local function call(fn)
+		local ok, res = pcall(fn)
+		if ok then return res end
+		return nil
+	end
+
+	local function phantom()
+		local t = setmetatable({}, {
+			__index = function(self, k)
+				local v = phantom()
+				rawset(self, k, v)
+				return v
+			end,
+			__newindex = function() end,
+		})
+		return t
+	end
+
+	local function stub()
+		local s = setmetatable({}, {
+			__index = function(t, k)
+				local f = function() return t end
+				rawset(t, k, f)
+				return f
+			end,
+		})
+		return s
+	end
+
+	local function toBool(v)
+		if v == true then return true end
+		if type(v) == "number" then return v ~= 0 end
+		if type(v) == "string" then return v == "true" or v == "1" end
+		return false
+	end
+
+	local function wrap(ctrl)
+		if type(ctrl) ~= "table" then return ctrl end
+		if not ctrl.__xjwWrapped then
+			ctrl.__xjwWrapped = true
+			if type(ctrl.Set) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.Set = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.SetValues) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.SetValues = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.Get) ~= "function" then
+				ctrl.Get = function() return ctrl.Value end
+			end
+		end
+		return ctrl
+	end
+
+	local makeContainer
+
+	makeContainer = function(real, isTab)
+		local box = {}
+		local implicit = nil
+		local activeReal = nil
+		local sectionSeq = 0
+
+		local function target()
+			if not real then return nil end
+			if isTab then
+				if activeReal then return activeReal end
+				if implicit then return implicit end
+				implicit = call(function() return real:AddLeftGroupbox("") end)
+				if not implicit then implicit = call(function() return real:AddRightGroupbox("") end) end
+				return implicit
+			end
+			return real
+		end
+
+		local function build(method, primary, fallback, idx)
+			local function attempt(info)
+				if not info then return nil end
+				local t = target()
+				if not t then return nil end
+				local fn = t[method]
+				if type(fn) ~= "function" then return nil end
+				local key = idx
+				if key == nil or key == "" then key = nextId(method) end
+				return call(function() return fn(t, key, info) end)
+			end
+			local ctrl = attempt(primary)
+			if not ctrl then ctrl = attempt(fallback) end
+			return wrap(ctrl)
+		end
+
+		function box:Section(info)
+			local title, icon = "", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or ""
+				icon = info.Icon
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not isTab or not real then return box end
+			sectionSeq = sectionSeq + 1
+			local gb
+			if sectionSeq % 2 == 1 then
+				gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end) end
+			else
+				gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end) end
+			end
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title)) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:AddLeftGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:AddRightGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:Toggle(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or info.Name or "开关")
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local cb = info.Callback or info.Changed
+			local tip = info.Desc or info.Description
+			return build("AddToggle",
+				{ Text = text, Default = toBool(def), Callback = cb, Tooltip = tip },
+				{ Text = text, Default = toBool(def), Callback = cb })
+		end
+
+		function box:Slider(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local min = tonumber(info.Min) or 0
+			local max = tonumber(info.Max) or 100
+			local def = info.Default
+			if def == nil then def = info.Value end
+			if type(def) == "table" then
+				min = tonumber(def.Min) or min
+				max = tonumber(def.Max) or max
+				def = def.Default
+			end
+			if max < min then min, max = max, min end
+			def = math.clamp(tonumber(def) or min, min, max)
+			local step = tonumber(info.Step)
+			local rounding = 0
+			if step and step > 0 and step < 1 then
+				rounding = math.max(0, math.ceil(-math.log10(step) - 0.0000001))
+			end
+			local text = tostring(info.Title or info.Text or "滑块")
+			local cb = info.Callback or info.Changed
+			return build("AddSlider",
+				{ Text = text, Default = def, Min = min, Max = max, Rounding = rounding, Suffix = info.Suffix, Prefix = info.Prefix, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Default = def, Min = min, Max = max, Callback = cb })
+		end
+
+		function box:Dropdown(info)
+			if type(info) ~= "table" then info = { Values = {} } end
+			local values = info.Values or info.Options or {}
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local multi = info.Multi == true
+			if multi and type(def) ~= "table" then
+				def = nil
+			end
+			local text = tostring(info.Title or info.Text or "选择")
+			local cb = info.Callback or info.Changed
+			local ctrl = build("AddDropdown",
+				{ Text = text, Values = values, Multi = multi, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Values = values, Multi = multi },
+				text)
+			if ctrl and def ~= nil and type(ctrl.SetValue) == "function" then
+				task.defer(function()
+					pcall(function() ctrl:SetValue(def) end)
+				end)
+			end
+			return ctrl
+		end
+
+		function box:Button(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or "按钮")
+			local cb = info.Callback or info.Func
+			local t = target()
+			if not t then return wrap(nil) end
+
+			local ctrl = call(function() return t:AddButton({ Text = text, Func = cb, DoubleClick = info.DoubleClick }) end)
+			if not ctrl then
+				ctrl = call(function() return t:AddButton(nextId("AddButton"), { Text = text, Func = cb }) end)
+			end
+			return wrap(ctrl)
+		end
+
+		function box:Input(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local text = tostring(info.Title or info.Text or "输入")
+			return build("AddInput",
+				{ Text = text, Default = def == nil and "" or tostring(def), Placeholder = info.Placeholder and tostring(info.Placeholder) or "", Callback = info.Callback },
+				{ Text = text, Default = def == nil and "" or tostring(def) })
+		end
+
+		function box:Paragraph(info)
+			local text = ""
+			if type(info) == "table" then
+				local head = info.Title or info.Text or ""
+				local tail = info.Desc or info.Description or ""
+				text = tostring(head)
+				if tail ~= "" then text = text .. "  " .. tostring(tail) end
+			elseif info ~= nil then
+				text = tostring(info)
+			end
+			local t = target()
+			if t and type(t.AddLabel) == "function" then
+				call(function() return t:AddLabel(text) end)
+			end
+			return nil
+		end
+
+		function box:Label(info)
+			return box:Paragraph(info)
+		end
+
+		function box:Divider()
+			local t = target()
+			if t and type(t.AddDivider) == "function" then
+				call(function() return t:AddDivider() end)
+			end
+			return nil
+		end
+
+		function box:Keybind(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			return build("AddKeyPicker",
+				{ Text = tostring(info.Title or "按键"), Mode = info.Mode, Default = def, Callback = info.Callback, ChangedCallback = info.Changed },
+				{ Text = tostring(info.Title or "按键") })
+		end
+
+		function box:ColorPicker(info)
+			return stub()
+		end
+
+		function box:Textbox(info)
+			return box:Input(info)
+		end
+
+		return box
+	end
+
+	function Compat:CreateWindow(opt)
+		opt = opt or {}
+		local win = call(function()
+			return Lib:CreateWindow({
+				Title = tostring(opt.Title or "XJW"),
+				Footer = tostring(opt.Author or opt.Footer or "XJW"),
+			})
+		end)
+
+		if not win then
+			pcall(function() Lib:Notify("窗口创建失败, 请重新执行脚本", 5) end)
+		end
+
+		if win then
+			local usedTabs = {}
+			local rawAddTab = win.AddTab
+			if type(rawAddTab) == "function" then
+				pcall(function()
+					win.AddTab = function(self, ...)
+						local first = select(1, ...)
+						local name = first
+						if type(first) == "table" then name = first.Name or first.Title end
+						if name ~= nil then usedTabs[tostring(name)] = true end
+						return rawAddTab(self, ...)
+					end
+				end)
+			end
+
+			task.defer(function()
+				pcall(function()
+					local SettingsName = "UI设置"
+					if usedTabs[SettingsName] then SettingsName = "设置" end
+					local SettingsTab = win:AddTab(SettingsName, "settings")
+local MenuGroup = SettingsTab:AddLeftGroupbox("菜单")
+
+local LastUnloadAt
+
+MenuGroup:AddButton("卸载脚本", function()
+	local function DoUnload()
+		task.defer(function()
+			pcall(function()
+				Lib:Unload()
+			end)
+		end)
+	end
+
+	local OkDialog = pcall(function()
+		win:AddDialog("XJWUnloadConfirm", {
+			Title = "卸载脚本",
+			Description = "确定要卸载脚本吗？所有已启用的功能将被关闭，脚本随即终止。",
+			AutoDismiss = false,
+			OutsideClickDismiss = false,
+			FooterButtons = {
+				Cancel = {
+					Title = "取消",
+					Variant = "Ghost",
+					Order = 1,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+					end,
+				},
+				Unload = {
+					Title = "卸载",
+					Variant = "Destructive",
+					Order = 2,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+						DoUnload()
+					end,
+				},
+			},
+		})
+	end)
+
+	if OkDialog then
+		return
+	end
+
+	if not LastUnloadAt or (os.clock() - LastUnloadAt) > 5 then
+		LastUnloadAt = os.clock()
+		pcall(function()
+			Lib:Notify("再次点击「卸载脚本」确认卸载，5 秒内有效")
+		end)
+		return
+	end
+
+	LastUnloadAt = nil
+	DoUnload()
 end)
-if not ok then
-    game:GetService("StarterGui"):SetCore("SendNotification", { Title = "One Tap", Text = "UI库加载失败: " .. tostring(WindUI) })
-    return
+
+MenuGroup:AddLabel("菜单快捷键")
+MenuGroup:AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	Visible = false,
+	Text = "菜单快捷键",
+})
+
+Lib.ToggleKeybind = Lib.Options and Lib.Options.MenuKeybind
+
+local ThemeManager = Lib.ThemeManager
+local SaveManager = Lib.SaveManager
+
+if type(ThemeManager) == "table" then
+	ThemeManager:SetLibrary(Lib)
+	ThemeManager:SetFolder("XJWUITheme")
+	ThemeManager:ApplyToTab(SettingsTab)
 end
 
+if type(SaveManager) == "table" then
+	SaveManager:SetLibrary(Lib)
+	SaveManager:SetFolder("XJWUIConfig")
+	SaveManager:BuildConfigSection(SettingsTab)
+end
+
+				end)
+			end)
+		end
+
+
+		local proxy = {}
+		proxy.IsPC = false
+		proxy.Window = win
+		proxy.OnClose = opt.OnClose
+		proxy.OnOpen = opt.OnOpen
+
+		function proxy:Tab(info)
+			local title, icon = "页面", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or "页面"
+				icon = info.Icon or info.IconName
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not win then return makeContainer(nil, false) end
+			local tab = call(function() return win:AddTab(tostring(title), icon, "") end)
+			if not tab then tab = call(function() return win:AddTab(tostring(title)) end) end
+			if not tab then tab = call(function() return win:AddTab({ Name = tostring(title), Icon = icon }) end) end
+			return makeContainer(tab, true)
+		end
+
+		function proxy:Tag()
+			return stub()
+		end
+
+		function proxy:EditOpenButton()
+			return stub()
+		end
+
+		function proxy:Dialog()
+			return stub()
+		end
+
+		function proxy:SelectTab()
+		end
+
+		function proxy:SetTheme()
+		end
+
+		function proxy:SetBackground()
+		end
+
+		function proxy:SetUIScale(v)
+			pcall(function()
+				Lib.UIScale = v
+				if type(Lib.ApplyUIScale) == "function" then Lib:ApplyUIScale(v) end
+			end)
+		end
+
+		function proxy:SetScale(v)
+			proxy:SetUIScale(v)
+		end
+	function proxy:AddDialog(idx, info)
+		if not win then return stub() end
+		local d = call(function() return win:AddDialog(idx, info) end)
+		if d == nil then return stub() end
+		return d
+	end
+
+	function proxy:Toggle(v)
+		if not win then return end
+		return call(function() return win:Toggle(v) end)
+	end
+
+	function proxy:Show()
+		return proxy:Toggle(true)
+	end
+
+	function proxy:Hide()
+		return proxy:Toggle(false)
+	end
+
+	function proxy:Destroy()
+		if not win then return end
+		return call(function() return win:Destroy() end)
+	end
+
+	proxy.UIElements = proxy.UIElements or phantom()
+
+	function proxy:Notify(info)
+		return Compat:Notify(info)
+	end
+
+	function proxy:SetWatermark() end
+
+	function proxy:SetToggleKey() end
+
+	function proxy:SetNotification() end
+
+		function proxy:SetTitle()
+		end
+
+		function proxy:Toggle(v)
+			if v == false then
+				proxy:Close()
+			else
+				proxy:Open()
+			end
+		end
+
+		function proxy:Open()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(true) end)
+			else
+				call(function() Lib:Toggle(true) end)
+			end
+			if type(proxy.OnOpen) == "function" then pcall(proxy.OnOpen) end
+		end
+
+		function proxy:Close()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(false) end)
+			else
+				call(function() Lib:Toggle(false) end)
+			end
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+		end
+
+		function proxy:Destroy()
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+			call(function() Lib:Unload() end)
+		end
+
+		function proxy:Unload()
+			proxy:Destroy()
+		end
+
+		return proxy
+	end
+
+	function Compat:Notify(info)
+		if type(info) ~= "table" then info = { Content = tostring(info) } end
+		local title = tostring(info.Title or info.Name or "提示")
+		local desc = tostring(info.Content or info.Description or info.Desc or info.Text or "")
+		local time = tonumber(info.Duration or info.Time or 4) or 4
+		local ok = pcall(function()
+			Lib:Notify({ Title = title, Description = desc, Time = time })
+		end)
+		if not ok then
+			pcall(function() Lib:Notify(title .. ": " .. desc) end)
+		end
+	end
+
+	function Compat:Unload()
+		call(function() Lib:Unload() end)
+	end
+
+	function Compat:SetTheme()
+	end
+
+	function Compat:SetColorScheme()
+	end
+
+	function Compat:SetUIScale()
+	end
+
+	Compat.Themes = setmetatable({}, { __index = function() return nil end })
+	Compat.Scheme = Lib.Scheme
+	Compat.Library = Lib
+	return Compat
+end
+
+local WindUI = XJWCompat(Library)
 
 local bytenetrel = ReplicatedStorage:WaitForChild("ByteNetReliable", 10)
 local ok1, wpnpkts = pcall(require, ReplicatedStorage.Common.Packets.WeaponPackets)
@@ -46,9 +598,8 @@ if not bytenetrel or not ok1 or not ok2 then
     return
 end
 
-
 local S = {
-    killOn = false, fireInterval = 0.03, killRange = 0, infFire = true,
+    killOn = false, fireInterval = 0.03, killRange = 0, infFire = false,
     killAura = false, auraRange = 50, hitboxOn = false, hitboxSize = 8,
     aimOn = false, aimSmooth = 0.15, fovVis = false, fovRadius = 150,
     silentOn = false, hitChance = 100, wallbang = false, infDist = false,
@@ -68,7 +619,6 @@ local curTarget = nil
 local targetCount = 0
 local ws_en = false
 local jp_en = false
-
 
 local function getRoot()
     local c = lp.Character
@@ -118,7 +668,6 @@ local function getTargsByRange()
     return t
 end
 
-
 local wpnData = {}
 local origConstants = {}
 if ok3 and wpnmng then
@@ -154,7 +703,6 @@ local function applyWpnMods()
     end)
 end
 
-
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -181,7 +729,6 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     return oldNamecall(self, ...)
 end))
 
-
 local oldIndex
 oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
     if not checkcaller() then
@@ -204,12 +751,10 @@ oldNewIndex = hookmetamethod(game, "__newindex", newcclosure(function(self, key,
     return oldNewIndex(self, key, value)
 end))
 
-
 local origVmShoot
 if ok4 and vwmdlclnt and vwmdlclnt.shoot then
     origVmShoot = vwmdlclnt.shoot
 end
-
 
 if ok1 and wpnpkts and wpnpkts.hitResult and wpnpkts.hitResult.listen then
     pcall(function()
@@ -227,7 +772,6 @@ if ok1 and wpnpkts and wpnpkts.hitResult and wpnpkts.hitResult.listen then
     end)
 end
 
-
 local loopConn = nil
 local function startKillLoop()
     if loopConn then loopConn:Disconnect() end
@@ -244,7 +788,6 @@ local function startKillLoop()
     end)
 end
 
-
 local auraConn = nil
 local function startAuraLoop()
     if auraConn then auraConn:Disconnect() end
@@ -260,7 +803,6 @@ local function startAuraLoop()
         end
     end)
 end
-
 
 local hbPoints = { "Head", "UpperTorso", "LowerTorso", "HumanoidRootPart", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" }
 local hbConn = nil
@@ -279,7 +821,6 @@ local function startHbLoop()
     end)
 end
 
-
 local function pickAimTarget()
     local mouse = UserInputService:GetMouseLocation()
     local cam = Workspace.CurrentCamera
@@ -295,7 +836,6 @@ local function pickAimTarget()
     end
     return best
 end
-
 
 local silentTarg = nil
 local espDraws = {}
@@ -324,14 +864,12 @@ RunService.RenderStepped:Connect(function(dt)
     local mp = UserInputService:GetMouseLocation()
     local myRoot = getRoot()
 
-    
     if S.silentOn then
         silentTarg = pickAimTarget()
     else
         silentTarg = nil
     end
 
-    
     if S.aimOn then
         local t = pickAimTarget()
         if t and cam then
@@ -339,7 +877,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    
     if S.fovVis and cam then
         fovCircle.Visible = true
         fovCircle.Position = mp
@@ -348,7 +885,6 @@ RunService.RenderStepped:Connect(function(dt)
         fovCircle.Visible = false
     end
 
-    
     if S.triggerOn and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
         local t = pickAimTarget()
         if t then
@@ -356,7 +892,6 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    
     if S.autoShoot then
         local t = pickAimTarget()
         if t then
@@ -364,12 +899,10 @@ RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    
     if S.spinOn and myRoot then
         myRoot.CFrame = myRoot.CFrame * CFrame.Angles(0, math.rad(S.spinSpeed * dt), 0)
     end
 
-    
     if S.killFeed and lp.Character then
         pcall(function()
             local t = lp.PlayerGui:FindFirstChild("Gameplay") and lp.PlayerGui.Gameplay:FindFirstChild("Kill")
@@ -380,7 +913,6 @@ RunService.RenderStepped:Connect(function(dt)
         end)
     end
 
-    
     if S.espOn and cam then
         for _, t in ipairs(getTargs()) do
             local d = getEsp(t.char)
@@ -471,7 +1003,6 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
-
 RunService.Heartbeat:Connect(function()
     local hum = getHum()
     if hum then
@@ -505,7 +1036,6 @@ RunService.Stepped:Connect(function()
     end
 end)
 
-
 local tpConn = nil
 local function setThirdPerson(on)
     if on then
@@ -523,7 +1053,6 @@ local function setThirdPerson(on)
     end
 end
 local origScope = ok2 and wpnclnt and wpnclnt.scope
-
 
 task.spawn(function()
     while true do
@@ -570,17 +1099,10 @@ task.spawn(function()
     end
 end)
 
-
 local Window = WindUI:CreateWindow({
-    Title = "XJW",
-    Icon = "sparkles",
-    Author = "[FPS]一键点击",
-    Folder = "OneTapAllInOne",
-    Size = UDim2.fromOffset(400, 520),
-    Theme = "Dark",
-    HideSearchBar = false,
+Title = "[FPS]一键点击",
+Author = "XJW",
 })
-
 
 if Window then
     pcall(function() Window.IsPC = false end)
@@ -588,7 +1110,6 @@ end
 
 local StatusTag = Window:Tag({ Title = "待开启 | 0 目标", Color = Color3.fromRGB(255, 255, 255) })
 Window:Tag({ Title = "[FPS]一键点击", Color = Color3.fromHex("#FF6B6B") })
-
 
 local killTab = Window:Tab({ Title = "击杀", Icon = "settings" })
 local killSec = killTab:Section({ Title = "击杀控制", TextXAlignment = "Left", TextSize = 17 })
@@ -613,7 +1134,7 @@ killSec:Toggle({
 })
 killSec:Toggle({
     Title = "无限射速",
-    Default = true,
+    Default = false,
     Callback = function(state)
         S.infFire = state
         applyWpnMods()
@@ -667,7 +1188,6 @@ killSec:Button({
         StatusTag:SetTitle((S.killOn and "运行中" or "待开启") .. " | " .. targetCount .. " 目标")
     end
 })
-
 
 local aimTab = Window:Tab({ Title = "瞄准", Icon = "crosshair" })
 local aimSec = aimTab:Section({ Title = "瞄准控制", TextXAlignment = "Left", TextSize = 17 })
@@ -727,7 +1247,6 @@ aimSec:Slider({
     Callback = function(v) S.autoShootDelay = v end
 })
 
-
 local espTab = Window:Tab({ Title = "透视", Icon = "eye" })
 local espSec = espTab:Section({ Title = "透视控制", TextXAlignment = "Left", TextSize = 17 })
 
@@ -777,7 +1296,6 @@ espSec:Toggle({
     Default = false,
     Callback = function(state) S.dangerOn = state end
 })
-
 
 local wpnTab = Window:Tab({ Title = "武器", Icon = "sword" })
 local wpnSec = wpnTab:Section({ Title = "武器修改", TextXAlignment = "Left", TextSize = 17 })
@@ -837,7 +1355,6 @@ wpnSec:Toggle({
     Callback = function(state) S.ffBy = state end
 })
 
-
 local movTab = Window:Tab({ Title = "移动", Icon = "person" })
 local movSec = movTab:Section({ Title = "移动控制", TextXAlignment = "Left", TextSize = 17 })
 
@@ -888,7 +1405,6 @@ movSec:Toggle({
     end
 })
 
-
 local funTab = Window:Tab({ Title = "功能", Icon = "wrench" })
 local funSec = funTab:Section({ Title = "实用功能", TextXAlignment = "Left", TextSize = 17 })
 
@@ -920,14 +1436,11 @@ funSec:Button({
     end
 })
 
-
 RunService.Heartbeat:Connect(function()
     if S.killOn then
         StatusTag:SetTitle("运行中 | " .. targetCount .. " 目标")
     end
 end)
 
-
 applyWpnMods()
 
-print("[One Tap [FPS]一键点击] 已生成，请在界面中开启功能")

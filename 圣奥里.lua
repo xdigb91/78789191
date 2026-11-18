@@ -1,5 +1,4 @@
 
-
 if getgenv().XJWScriptLoaded then
     pcall(function()
         if getgenv().XJWScript and getgenv().XJWScript.Unload then
@@ -139,50 +138,581 @@ local function text(parent, str, size, color, font, xAlign)
     }, parent)
 end
 
+	local OBSIDIAN_REPO = "https://gitlab.com/aristooey/Obsidian/-/raw/main/"
 
-local REPOS = {
-    "https://cdn.jsdelivr.net/gh/finendss/VowLibrary@refs/heads/main/",
-    "https://ghproxy.net/https://raw.githubusercontent.com/finendss/VowLibrary/refs/heads/main/",
-    "https://raw.githubusercontent.com/finendss/VowLibrary/refs/heads/main/",
-}
-local function fetchWindUI()
-    local content = nil
-    for _, repo in ipairs(REPOS) do
-        local ok, c = pcall(function()
-            return game:HttpGet(repo .. "WINDUI.lua")
-        end)
-        if ok and c and #c > 0 then
-            content = c
-            break
-        end
-    end
-    if content then
-        content = content:gsub(
-            "https://raw.githubusercontent.com/Footagesus/Icons/main/Main-v2.lua",
-            "https://cdn.jsdelivr.net/gh/Footagesus/Icons@main/Main-v2.lua"
-        )
-        local fn = loadstring(content)
-        if fn then
-            local okChunk, result = pcall(fn)
-            if okChunk then
-                return result
-            end
-        end
-    end
+	local OkLoad, Library = pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "Library.lua"))()
+	end)
+
+	if not OkLoad or type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
+		return
+	end
+
+	local ThemeManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/ThemeManager.lua"))()
+	end))
+	local SaveManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/SaveManager.lua"))()
+	end))
+
+	Library.ThemeManager = ThemeManager
+	Library.SaveManager = SaveManager
+
+local function XJWCompat(Lib)
+	local Compat = {}
+	local seq = 0
+
+	local function nextId(prefix)
+		seq = seq + 1
+		return "XJW" .. prefix .. seq
+	end
+
+	local function call(fn)
+		local ok, res = pcall(fn)
+		if ok then return res end
+		return nil
+	end
+
+	local function phantom()
+		local t = setmetatable({}, {
+			__index = function(self, k)
+				local v = phantom()
+				rawset(self, k, v)
+				return v
+			end,
+			__newindex = function() end,
+		})
+		return t
+	end
+
+	local function stub()
+		local s = setmetatable({}, {
+			__index = function(t, k)
+				local f = function() return t end
+				rawset(t, k, f)
+				return f
+			end,
+		})
+		return s
+	end
+
+	local function toBool(v)
+		if v == true then return true end
+		if type(v) == "number" then return v ~= 0 end
+		if type(v) == "string" then return v == "true" or v == "1" end
+		return false
+	end
+
+	local function wrap(ctrl)
+		if type(ctrl) ~= "table" then return ctrl end
+		if not ctrl.__xjwWrapped then
+			ctrl.__xjwWrapped = true
+			if type(ctrl.Set) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.Set = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.SetValues) ~= "function" and type(ctrl.SetValue) == "function" then
+				ctrl.SetValues = function(_self, v) return ctrl:SetValue(v) end
+			end
+			if type(ctrl.Get) ~= "function" then
+				ctrl.Get = function() return ctrl.Value end
+			end
+		end
+		return ctrl
+	end
+
+	local makeContainer
+
+	makeContainer = function(real, isTab)
+		local box = {}
+		local implicit = nil
+		local activeReal = nil
+		local sectionSeq = 0
+
+		local function target()
+			if not real then return nil end
+			if isTab then
+				if activeReal then return activeReal end
+				if implicit then return implicit end
+				implicit = call(function() return real:AddLeftGroupbox("") end)
+				if not implicit then implicit = call(function() return real:AddRightGroupbox("") end) end
+				return implicit
+			end
+			return real
+		end
+
+		local function build(method, primary, fallback, idx)
+			local function attempt(info)
+				if not info then return nil end
+				local t = target()
+				if not t then return nil end
+				local fn = t[method]
+				if type(fn) ~= "function" then return nil end
+				local key = idx
+				if key == nil or key == "" then key = nextId(method) end
+				return call(function() return fn(t, key, info) end)
+			end
+			local ctrl = attempt(primary)
+			if not ctrl then ctrl = attempt(fallback) end
+			return wrap(ctrl)
+		end
+
+		function box:Section(info)
+			local title, icon = "", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or ""
+				icon = info.Icon
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not isTab or not real then return box end
+			sectionSeq = sectionSeq + 1
+			local gb
+			if sectionSeq % 2 == 1 then
+				gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end) end
+			else
+				gb = call(function() return real:AddRightGroupbox(tostring(title), icon) end)
+				if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title), icon) end) end
+			end
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(title)) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:AddLeftGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:AddRightGroupbox(name, icon)
+			if not isTab or not real then return box end
+			local gb = call(function() return real:AddRightGroupbox(tostring(name or ""), icon) end)
+			if not gb then gb = call(function() return real:AddLeftGroupbox(tostring(name or ""), icon) end) end
+			if not gb then return box end
+			activeReal = gb
+			return makeContainer(gb, false)
+		end
+
+		function box:Toggle(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or info.Name or "开关")
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local cb = info.Callback or info.Changed
+			local tip = info.Desc or info.Description
+			return build("AddToggle",
+				{ Text = text, Default = toBool(def), Callback = cb, Tooltip = tip },
+				{ Text = text, Default = toBool(def), Callback = cb })
+		end
+
+		function box:Slider(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local min = tonumber(info.Min) or 0
+			local max = tonumber(info.Max) or 100
+			local def = info.Default
+			if def == nil then def = info.Value end
+			if type(def) == "table" then
+				min = tonumber(def.Min) or min
+				max = tonumber(def.Max) or max
+				def = def.Default
+			end
+			if max < min then min, max = max, min end
+			def = math.clamp(tonumber(def) or min, min, max)
+			local step = tonumber(info.Step)
+			local rounding = 0
+			if step and step > 0 and step < 1 then
+				rounding = math.max(0, math.ceil(-math.log10(step) - 0.0000001))
+			end
+			local text = tostring(info.Title or info.Text or "滑块")
+			local cb = info.Callback or info.Changed
+			return build("AddSlider",
+				{ Text = text, Default = def, Min = min, Max = max, Rounding = rounding, Suffix = info.Suffix, Prefix = info.Prefix, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Default = def, Min = min, Max = max, Callback = cb })
+		end
+
+		function box:Dropdown(info)
+			if type(info) ~= "table" then info = { Values = {} } end
+			local values = info.Values or info.Options or {}
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local multi = info.Multi == true
+			if multi and type(def) ~= "table" then
+				def = nil
+			end
+			local text = tostring(info.Title or info.Text or "选择")
+			local cb = info.Callback or info.Changed
+			local ctrl = build("AddDropdown",
+				{ Text = text, Values = values, Multi = multi, Callback = cb, Tooltip = info.Desc },
+				{ Text = text, Values = values, Multi = multi },
+				text)
+			if ctrl and def ~= nil and type(ctrl.SetValue) == "function" then
+				task.defer(function()
+					pcall(function() ctrl:SetValue(def) end)
+				end)
+			end
+			return ctrl
+		end
+
+		function box:Button(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local text = tostring(info.Title or info.Text or "按钮")
+			local cb = info.Callback or info.Func
+			local t = target()
+			if not t then return wrap(nil) end
+
+			local ctrl = call(function() return t:AddButton({ Text = text, Func = cb, DoubleClick = info.DoubleClick }) end)
+			if not ctrl then
+				ctrl = call(function() return t:AddButton(nextId("AddButton"), { Text = text, Func = cb }) end)
+			end
+			return wrap(ctrl)
+		end
+
+		function box:Input(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			local text = tostring(info.Title or info.Text or "输入")
+			return build("AddInput",
+				{ Text = text, Default = def == nil and "" or tostring(def), Placeholder = info.Placeholder and tostring(info.Placeholder) or "", Callback = info.Callback },
+				{ Text = text, Default = def == nil and "" or tostring(def) })
+		end
+
+		function box:Paragraph(info)
+			local text = ""
+			if type(info) == "table" then
+				local head = info.Title or info.Text or ""
+				local tail = info.Desc or info.Description or ""
+				text = tostring(head)
+				if tail ~= "" then text = text .. "  " .. tostring(tail) end
+			elseif info ~= nil then
+				text = tostring(info)
+			end
+			local t = target()
+			if t and type(t.AddLabel) == "function" then
+				call(function() return t:AddLabel(text) end)
+			end
+			return nil
+		end
+
+		function box:Label(info)
+			return box:Paragraph(info)
+		end
+
+		function box:Divider()
+			local t = target()
+			if t and type(t.AddDivider) == "function" then
+				call(function() return t:AddDivider() end)
+			end
+			return nil
+		end
+
+		function box:Keybind(info)
+			if type(info) ~= "table" then info = { Title = tostring(info) } end
+			local def = info.Default
+			if def == nil then def = info.Value end
+			return build("AddKeyPicker",
+				{ Text = tostring(info.Title or "按键"), Mode = info.Mode, Default = def, Callback = info.Callback, ChangedCallback = info.Changed },
+				{ Text = tostring(info.Title or "按键") })
+		end
+
+		function box:ColorPicker(info)
+			return stub()
+		end
+
+		function box:Textbox(info)
+			return box:Input(info)
+		end
+
+		return box
+	end
+
+	function Compat:CreateWindow(opt)
+		opt = opt or {}
+		local win = call(function()
+			return Lib:CreateWindow({
+				Title = tostring(opt.Title or "XJW"),
+				Footer = tostring(opt.Author or opt.Footer or "XJW"),
+			})
+		end)
+
+		if not win then
+			pcall(function() Lib:Notify("窗口创建失败, 请重新执行脚本", 5) end)
+		end
+
+		if win then
+			local usedTabs = {}
+			local rawAddTab = win.AddTab
+			if type(rawAddTab) == "function" then
+				pcall(function()
+					win.AddTab = function(self, ...)
+						local first = select(1, ...)
+						local name = first
+						if type(first) == "table" then name = first.Name or first.Title end
+						if name ~= nil then usedTabs[tostring(name)] = true end
+						return rawAddTab(self, ...)
+					end
+				end)
+			end
+
+			task.defer(function()
+				pcall(function()
+					local SettingsName = "UI设置"
+					if usedTabs[SettingsName] then SettingsName = "设置" end
+					local SettingsTab = win:AddTab(SettingsName, "settings")
+local MenuGroup = SettingsTab:AddLeftGroupbox("菜单")
+
+local LastUnloadAt
+
+MenuGroup:AddButton("卸载脚本", function()
+	local function DoUnload()
+		task.defer(function()
+			pcall(function()
+				Lib:Unload()
+			end)
+		end)
+	end
+
+	local OkDialog = pcall(function()
+		win:AddDialog("XJWUnloadConfirm", {
+			Title = "卸载脚本",
+			Description = "确定要卸载脚本吗？所有已启用的功能将被关闭，脚本随即终止。",
+			AutoDismiss = false,
+			OutsideClickDismiss = false,
+			FooterButtons = {
+				Cancel = {
+					Title = "取消",
+					Variant = "Ghost",
+					Order = 1,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+					end,
+				},
+				Unload = {
+					Title = "卸载",
+					Variant = "Destructive",
+					Order = 2,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+						DoUnload()
+					end,
+				},
+			},
+		})
+	end)
+
+	if OkDialog then
+		return
+	end
+
+	if not LastUnloadAt or (os.clock() - LastUnloadAt) > 5 then
+		LastUnloadAt = os.clock()
+		pcall(function()
+			Lib:Notify("再次点击「卸载脚本」确认卸载，5 秒内有效")
+		end)
+		return
+	end
+
+	LastUnloadAt = nil
+	DoUnload()
+end)
+
+MenuGroup:AddLabel("菜单快捷键")
+MenuGroup:AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	Visible = false,
+	Text = "菜单快捷键",
+})
+
+Lib.ToggleKeybind = Lib.Options and Lib.Options.MenuKeybind
+
+local ThemeManager = Lib.ThemeManager
+local SaveManager = Lib.SaveManager
+
+if type(ThemeManager) == "table" then
+	ThemeManager:SetLibrary(Lib)
+	ThemeManager:SetFolder("XJWUITheme")
+	ThemeManager:ApplyToTab(SettingsTab)
 end
 
-local WindUI = fetchWindUI()
-if not WindUI then
-    local deadline = tick() + 15
-    while not WindUI and tick() < deadline do
-        WindUI = fetchWindUI()
-        task.wait(1)
-    end
+if type(SaveManager) == "table" then
+	SaveManager:SetLibrary(Lib)
+	SaveManager:SetFolder("XJWUIConfig")
+	SaveManager:BuildConfigSection(SettingsTab)
 end
-if not WindUI then
-    getgenv().XJWScriptLoaded = false
-    return nil
+
+				end)
+			end)
+		end
+
+
+		local proxy = {}
+		proxy.IsPC = false
+		proxy.Window = win
+		proxy.OnClose = opt.OnClose
+		proxy.OnOpen = opt.OnOpen
+
+		function proxy:Tab(info)
+			local title, icon = "页面", nil
+			if type(info) == "table" then
+				title = info.Title or info.Name or "页面"
+				icon = info.Icon or info.IconName
+			elseif info ~= nil then
+				title = tostring(info)
+			end
+			if not win then return makeContainer(nil, false) end
+			local tab = call(function() return win:AddTab(tostring(title), icon, "") end)
+			if not tab then tab = call(function() return win:AddTab(tostring(title)) end) end
+			if not tab then tab = call(function() return win:AddTab({ Name = tostring(title), Icon = icon }) end) end
+			return makeContainer(tab, true)
+		end
+
+		function proxy:Tag()
+			return stub()
+		end
+
+		function proxy:EditOpenButton()
+			return stub()
+		end
+
+		function proxy:Dialog()
+			return stub()
+		end
+
+		function proxy:SelectTab()
+		end
+
+		function proxy:SetTheme()
+		end
+
+		function proxy:SetBackground()
+		end
+
+		function proxy:SetUIScale(v)
+			pcall(function()
+				Lib.UIScale = v
+				if type(Lib.ApplyUIScale) == "function" then Lib:ApplyUIScale(v) end
+			end)
+		end
+
+		function proxy:SetScale(v)
+			proxy:SetUIScale(v)
+		end
+	function proxy:AddDialog(idx, info)
+		if not win then return stub() end
+		local d = call(function() return win:AddDialog(idx, info) end)
+		if d == nil then return stub() end
+		return d
+	end
+
+	function proxy:Toggle(v)
+		if not win then return end
+		return call(function() return win:Toggle(v) end)
+	end
+
+	function proxy:Show()
+		return proxy:Toggle(true)
+	end
+
+	function proxy:Hide()
+		return proxy:Toggle(false)
+	end
+
+	function proxy:Destroy()
+		if not win then return end
+		return call(function() return win:Destroy() end)
+	end
+
+	proxy.UIElements = proxy.UIElements or phantom()
+
+	function proxy:Notify(info)
+		return Compat:Notify(info)
+	end
+
+	function proxy:SetWatermark() end
+
+	function proxy:SetToggleKey() end
+
+	function proxy:SetNotification() end
+
+		function proxy:SetTitle()
+		end
+
+		function proxy:Toggle(v)
+			if v == false then
+				proxy:Close()
+			else
+				proxy:Open()
+			end
+		end
+
+		function proxy:Open()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(true) end)
+			else
+				call(function() Lib:Toggle(true) end)
+			end
+			if type(proxy.OnOpen) == "function" then pcall(proxy.OnOpen) end
+		end
+
+		function proxy:Close()
+			if win and type(win.Toggle) == "function" then
+				call(function() win:Toggle(false) end)
+			else
+				call(function() Lib:Toggle(false) end)
+			end
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+		end
+
+		function proxy:Destroy()
+			if type(proxy.OnClose) == "function" then pcall(proxy.OnClose) end
+			call(function() Lib:Unload() end)
+		end
+
+		function proxy:Unload()
+			proxy:Destroy()
+		end
+
+		return proxy
+	end
+
+	function Compat:Notify(info)
+		if type(info) ~= "table" then info = { Content = tostring(info) } end
+		local title = tostring(info.Title or info.Name or "提示")
+		local desc = tostring(info.Content or info.Description or info.Desc or info.Text or "")
+		local time = tonumber(info.Duration or info.Time or 4) or 4
+		local ok = pcall(function()
+			Lib:Notify({ Title = title, Description = desc, Time = time })
+		end)
+		if not ok then
+			pcall(function() Lib:Notify(title .. ": " .. desc) end)
+		end
+	end
+
+	function Compat:Unload()
+		call(function() Lib:Unload() end)
+	end
+
+	function Compat:SetTheme()
+	end
+
+	function Compat:SetColorScheme()
+	end
+
+	function Compat:SetUIScale()
+	end
+
+	Compat.Themes = setmetatable({}, { __index = function() return nil end })
+	Compat.Scheme = Lib.Scheme
+	Compat.Library = Lib
+	return Compat
 end
+
+local WindUI = XJWCompat(Library)
 
 local function Notify(title, body, kind)
     if WindUI and WindUI.Notify then
@@ -212,10 +742,8 @@ if not guiParent then
     guiParent = LocalPlayer:WaitForChild("PlayerGui")
 end
 
-
-
 local Settings = {
-    
+
     stamina = false,
     hunger = false,
     infiniteAmmo = false,
@@ -233,7 +761,7 @@ local Settings = {
     combatBlock = false,
     autoHack = false,
     autoAtm = false,
-    
+
     autoMission = false,
     missionPriority = false,
     missionInterval = 2,
@@ -243,7 +771,7 @@ local Settings = {
     bus = false,
     farmer = false,
     golf = false,
-    
+
     aura = false,
     auraRange = 50,
     auraDamage = 5,
@@ -270,7 +798,7 @@ local Settings = {
     rangeCollision = false,
     rangeGlow = false,
     rangePulse = false,
-    
+
     aim = false,
     aimHold = true,
     aimFov = 140,
@@ -291,7 +819,7 @@ local Settings = {
     aimTracer = true,
     aimCrosshair = true,
     aimColor = "紫色",
-    
+
     silent = false,
     silentFov = 140,
     silentDistance = 300,
@@ -302,7 +830,7 @@ local Settings = {
     silentPolice = false,
     silentCivilian = false,
     silentShowFov = false,
-    
+
     hitbox = false,
     hitboxSize = 10,
     hitboxTransparency = 0.65,
@@ -311,7 +839,7 @@ local Settings = {
     hitboxGlow = true,
     hitboxPulse = false,
     hitboxColor = "紫色",
-    
+
     esp = false,
     espName = true,
     espDistance = true,
@@ -327,7 +855,7 @@ local Settings = {
         Fire = true, Police = true, Medical = true, Prisoner = true,
         ["Road Service"] = true, Transit = true,
     },
-    
+
     walkEnabled = false,
     walkSpeed = 200,
     jumpEnabled = false,
@@ -341,7 +869,7 @@ local Settings = {
     blink = false,
     blinkDistance = 120,
     blinkKey = Enum.KeyCode.Eight,
-    
+
     vehicleBoost = false,
     vehicleSpeed = 120,
     cruise = false,
@@ -354,13 +882,13 @@ local Settings = {
     vehicleEspHighlight = true,
     bringDistance = 12,
     bringVehicleKey = Enum.KeyCode.B,
-    
+
     policeCuff = false,
     policeTp = false,
     policeRange = 200,
     policeInterval = 0.5,
     policeCombat = false,
-    
+
     menuKey = Enum.KeyCode.RightShift,
     uiScale = 1,
     quickHud = UserInputService.TouchEnabled,
@@ -416,8 +944,6 @@ local TeamNames = {
     ["Road Service"] = "道路服务",
     Transit = "交通",
 }
-
-
 
 local function getChar(player)
     player = player or LocalPlayer
@@ -564,8 +1090,6 @@ local function screenPosition(worldPos)
     return Vector2.new(pos.X, pos.Y), onScreen and pos.Z > 0, pos.Z
 end
 
-
-
 local Remote, PlayerEvent, PlayerFunc
 pcall(function()
     Remote = ReplicatedStorage:FindFirstChild("Remote") or ReplicatedStorage:WaitForChild("Remote", 10)
@@ -602,15 +1126,10 @@ end)
 local LogSink = nil
 local function log(message, kind)
     kind = kind or "info"
-    pcall(function()
-        print("[圣奥里] " .. tostring(message))
-    end)
     if LogSink then
         pcall(LogSink, tostring(message), kind)
     end
 end
-
-
 
 local namecallInstalled = false
 local function installNamecall()
@@ -683,7 +1202,6 @@ local function installRaycast()
     end
 end
 installRaycast()
-
 
 local ragdollHooked = false
 local function installRagdollHook()
@@ -863,8 +1381,6 @@ function XJWBlink()
     teleportTo(target)
     log(string.format("Blink %.0f studs", (target - ray.Origin).Magnitude), "info")
 end
-
-
 
 local ghostGui = nil
 local ghostButton = nil
@@ -1046,8 +1562,6 @@ local function setGhostLock(on)
     end
 end
 
-
-
 local hitboxCache = {}
 
 local function clearHitbox(root)
@@ -1136,8 +1650,6 @@ local function clearAllHitboxes()
     hitboxCache = {}
 end
 
-
-
 local rangePart = nil
 
 local function updateRangeSphere()
@@ -1205,8 +1717,6 @@ local function updateRangeSphere()
         glow:Destroy()
     end
 end
-
-
 
 local FlyState = {
     active = false,
@@ -1384,8 +1894,6 @@ local function setNoclip(on)
     end
 end
 
-
-
 local VehicleState = {
     attachment = nil,
     velocity = nil,
@@ -1480,8 +1988,6 @@ function XJWUpdateVehicleFly(dt)
         VehicleState.flyVelocity.VectorVelocity = moveDirection() * Settings.vehicleFlySpeed
     end
 end
-
-
 
 local hasDrawing = type(Drawing) == "table" and Drawing.new ~= nil
 local Draw = {
@@ -1743,8 +2249,6 @@ local function updateSilent(dt)
         end
     end
 end
-
-
 
 local EspFolder = make("ScreenGui", {
     Name = "XJWESP",
@@ -2080,9 +2584,6 @@ connect(Players.PlayerAdded, function(player)
         end
     end)
 end)
-
-
-
 
 XJWVehicle = { trackers = {}, lastRefresh = 0 }
 
@@ -2482,8 +2983,6 @@ function XJWBringVehicleToName(name, forceNearest)
     Notify("带来载具", "未找到该玩家", "error")
 end
 
-
-
 local function sendDamage(player, partName, factor)
     if not PlayerEvent then
         return false
@@ -2643,8 +3142,6 @@ local function runRagebot()
     end
 end
 
-
-
 task.spawn(function()
     while true do
         if Settings.policeCuff or Settings.policeTp then
@@ -2695,8 +3192,6 @@ task.spawn(function()
         task.wait(Settings.policeInterval)
     end
 end)
-
-
 
 local function matchesMoneyPrompt(prompt)
     local name = string.lower(prompt.Name or "")
@@ -2936,8 +3431,6 @@ end)
 
 local autoHackCache = {}
 
-
-
 local AtmState = { signature = nil, busy = false, time = 0 }
 
 function XJWAutoAtmStep()
@@ -3109,8 +3602,6 @@ local function setAutoHack(on)
         end
     end)
 end
-
-
 
 local fpsFrames = 0
 local fpsClock = 0
@@ -3477,28 +3968,17 @@ connect(LocalPlayer.CharacterAdded, function(char)
     end
 end)
 
-
-
 local function flagSetter(key)
     return function(value)
         Settings[key] = value
     end
 end
 
-
-
 local ConfigRegistry = {}
 local Window = WindUI:CreateWindow({
-    Title = "圣奥里",
-    Icon = "sparkles",
-    Author = "XJW",
-    Folder = "XJWScriptSuzume",
-    Size = UDim2.fromOffset(420, 520),
-    Theme = "Dark",
-    HideSearchBar = false,
-    MobileButtonsSide = "Left",
+Title = "圣奥里",
+Author = "XJW",
 })
-
 
 local Tab = nil
 local function Section(name, sub)
@@ -3730,14 +4210,12 @@ _cb4 = function(value)
 end
 BT("重新隐藏", function(v) _cb4(v) end)
 
-
 local MoneyPage = Window:Tab({ Title = "自动化" })
 Tab = MoneyPage
 Section("拾取与交互", "自动化")
 TG("autoMoney", "自动捡钱", "自动寻找并拾取现金掉落", flagSetter)
 TG("autoHack", "自动黑客", "跳过黑客与迷你游戏", setAutoHack)
 TG("autoAtm", "ATM 自动解谜", "读取 Sequence1 并自动点击 ATM Hack", flagSetter)
-
 
 TG("instantPrompt", "秒互动", "ProximityPrompt 按住立即完成", flagSetter)
 
@@ -3763,7 +4241,6 @@ TG("bus", "公交车刷钱", "传送到公交区域并上下车", flagSetter)
 TG("farmer", "农民刷钱", "自动寻找 Pick Up 提示", flagSetter)
 TG("golf", "高尔夫刷钱", "自动创建房间并击球进洞", flagSetter)
 
-
 local CombatPage = Window:Tab({ Title = "战斗" })
 Tab = CombatPage
 Section("武器", "弹药与射速")
@@ -3776,7 +4253,6 @@ _cb6 = function(value)
         end
 end
 TG("rapidFire", "快速射击", "改写武器 SHOOT_MODE / RPM", function(v) _cb6(v) end)
-
 
 Section("杀戮光环", "范围伤害")
 TG("aura", "杀戮光环", "对范围内目标发送 damage", flagSetter)
@@ -3815,8 +4291,6 @@ TG("hitboxOutline", "显示轮廓", "", flagSetter)
 TG("hitboxGlow", "发光效果", "", flagSetter)
 TG("hitboxPulse", "脉动效果", "", flagSetter)
 DD("hitboxColor", "碰撞箱颜色", {"紫色", "红色", "粉色", "蓝色", "青色", "绿色", "黄色", "白色"}, "紫色", false, "", flagSetter)
-
-
 
 local AimPage = Window:Tab({ Title = "自瞄" })
 Tab = AimPage
@@ -3863,7 +4337,6 @@ TG("silentCivilian", "只瞄准平民", "", flagSetter)
 TG("silentCombat", "战斗检测", "", flagSetter)
 TG("silentShowFov", "显示静默圈", "", flagSetter)
 
-
 local EspPage = Window:Tab({ Title = "视觉" })
 Tab = EspPage
 Section("范围", "球形可视化")
@@ -3876,7 +4349,6 @@ TG("rangeOutline", "显示轮廓", "", flagSetter)
 TG("rangeCollision", "启用碰撞", "", flagSetter)
 TG("rangeGlow", "发光效果", "", flagSetter)
 TG("rangePulse", "脉动效果", "", flagSetter)
-
 
 Section("玩家透视", "2D 方框 + 高亮")
 _cb9 = function(value)
@@ -3908,7 +4380,6 @@ _cb10 = function(value)
 end
 DD("espTeams", "选择透视队伍", {"Chef", "Civilian", "Delivery", "Farmer", "Fire", "Police", "Medical", "Prisoner", "Road Service", "Transit"}, { "Chef", "Civilian", "Delivery", "Farmer", "Fire", "Police", "Medical", "Prisoner", "Road Service", "Transit" }, true, "多选，全部取消则显示全部", function(v) _cb10(v) end)
 
-
 local PlayerPage = Window:Tab({ Title = "移动" })
 Tab = PlayerPage
 Section("位移", "Blink")
@@ -3920,7 +4391,6 @@ _cb11 = function(value)
         XJWBlink()
 end
 BT("立即 Blink", function(v) _cb11(v) end)
-
 
 Section("移动", "速度 / 跳跃 / 飞行")
 _cb12 = function(value)
@@ -3958,7 +4428,6 @@ _cb14 = function(value)
 end
 DD("flyMode", "飞行模式", {"传送", "物理"}, "传送", false, "", function(v) _cb14(v) end)
 TG("noclip", "穿墙", "", setNoclip)
-
 
 local VehiclePage = Window:Tab({ Title = "载具" })
 Tab = VehiclePage
@@ -4031,8 +4500,6 @@ TG("vehicleBoost", "速度控制器", "给座椅施加 LinearVelocity", flagSett
 SL("vehicleSpeed", "目标速度", 20, 500, 5, 120, "", 0, "", flagSetter)
 TG("cruise", "定速巡航", "持续保持油门", flagSetter)
 
-
-
 local PolicePage = Window:Tab({ Title = "警察" })
 Tab = PolicePage
 Section("执法", "手铐 / 传送")
@@ -4041,7 +4508,6 @@ TG("policeTp", "自动传送", "传送到最近的通缉平民身后", flagSette
 TG("policeCombat", "战斗检测", "", flagSetter)
 SL("policeRange", "范围", 20, 1000, 10, 200, "", 0, "", flagSetter)
 SL("policeInterval", "间隔", 0.1, 3, 0.1, 0.5, "", 0, "", flagSetter)
-
 
 local TeleportPage = Window:Tab({ Title = "传送" })
 Tab = TeleportPage
@@ -4372,7 +4838,6 @@ BT("显示地点面板", function()
 end)
 XJWBuildLocationUI(buildHolder)
 
-
 local ShopPage = Window:Tab({ Title = "商店" })
 Tab = ShopPage
 Section("快速交互", "黑市 / 补给")
@@ -4423,7 +4888,6 @@ task.spawn(function()
         task.wait(2)
     end
 end)
-
 
 local ConsolePage = Window:Tab({ Title = "控制台" })
 Tab = ConsolePage
@@ -4512,7 +4976,6 @@ BT("显示日志面板", function()
     end
 end)
 
-
 local SettingsPage = Window:Tab({ Title = "设置" })
 Tab = SettingsPage
 Section("界面", "XJW 专属样式")
@@ -4528,7 +4991,6 @@ BT("保存配置", saveConfig)
 BT("加载配置", loadConfig)
 BT("卸载 圣奥里", function() local fn = getgenv().XJWScript and getgenv().XJWScript.Unload if fn then fn() end end)
 LB("圣奥里  v1.0 · by XJW  ·  紫黑流光")
-
 
 XJWQuick = {
     Enabled = false,
@@ -4933,8 +5395,6 @@ local function XJWQuickBuild()
 end
 
 XJWQuickBuild()
-
-
 
 local function Unload()
     if XJWQuick then
