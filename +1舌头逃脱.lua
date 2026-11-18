@@ -3,7 +3,7 @@ if not game:IsLoaded() then
 end
 
 if game.PlaceId ~= 122245938604556 then
-    error("该脚本仅支持 +1 舌头逃脱游戏。")
+    return
 end
 
 local Environment = getgenv()
@@ -236,7 +236,7 @@ local function Cleanup()
         return
     end
     State.Alive = false
-    State.WinGeneration += 1
+    State.WinGeneration = State.WinGeneration + 1
     for Key in State.Flags do
         State.Flags[Key] = false
     end
@@ -255,18 +255,36 @@ local function Cleanup()
     end
 end
 
-local repo = "https://raw.githubusercontent.com/ATLASTEAM01/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+	local OBSIDIAN_REPO = "https://gitlab.com/aristooey/Obsidian/-/raw/main/"
 
-local Toggles = Library.Toggles
+	local OkLoad, Library = pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "Library.lua"))()
+	end)
 
-local Window = Library:CreateWindow({ Title = GameName, Footer = FooterText, Center = true, AutoShow = true })
+	if not OkLoad or type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
+		return
+	end
+
+	local ThemeManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/ThemeManager.lua"))()
+	end))
+	local SaveManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/SaveManager.lua"))()
+	end))
+
+	Library.ThemeManager = ThemeManager
+	Library.SaveManager = SaveManager
+
+local Window = Library:CreateWindow({
+	Title = GameName,
+	Footer = FooterText,
+	Center = true,
+	AutoShow = true,
+})
 
 local Tabs = {
-    Main = Window:AddTab("主页", "user"),
-    ["UI设置"] = Window:AddTab("UI设置", "settings"),
+	Main = Window:AddTab("主页", "user"),
+	["UI设置"] = Window:AddTab("UI设置", "settings"),
 }
 
 local MainBox = Tabs.Main:AddLeftGroupbox("自动化功能")
@@ -294,7 +312,7 @@ for _, Key in ipairs({ "AutoTongue", "AutoRebirth", "AutoWins", "AutoRewards", "
         elseif Key == "BypassPause" then
             SetPauseBypass(Value)
         elseif Key == "AutoWins" then
-            State.WinGeneration += 1
+            State.WinGeneration = State.WinGeneration + 1
             State.WinMisses = 0
         elseif Key == "AutoTongue" then
             State.TreadmillPhase = 0
@@ -303,7 +321,7 @@ for _, Key in ipairs({ "AutoTongue", "AutoRebirth", "AutoWins", "AutoRewards", "
 end
 
 local StatusBox = Tabs.Main:AddRightGroupbox("实时状态看板")
-local StatusLabel = StatusBox:AddLabel("正在初始化数据看板...", { DoesWrap = true })
+local StatusLabel = StatusBox:AddLabel({ Text = "正在初始化数据看板...", DoesWrap = true })
 
 table.insert(State.Threads, task.spawn(function()
     while State.Alive do
@@ -318,17 +336,91 @@ table.insert(State.Threads, task.spawn(function()
     end
 end))
 
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
 
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-SaveManager:SetFolder("KlevorxTongueEscape/Configs")
+local MenuGroup = Tabs["UI设置"]:AddLeftGroupbox("菜单")
 
-SaveManager:BuildConfigSection(Tabs["UI设置"])
-ThemeManager:ApplyToTab(Tabs["UI设置"])
+local LastUnloadAt
 
-SaveManager:LoadAutoloadConfig()
+MenuGroup:AddButton("卸载脚本", function()
+	local function DoUnload()
+		task.defer(function()
+			pcall(function()
+				Library:Unload()
+			end)
+		end)
+	end
+
+	local OkDialog = pcall(function()
+		Window:AddDialog("XJWUnloadConfirm", {
+			Title = "卸载脚本",
+			Description = "确定要卸载脚本吗？所有已启用的功能将被关闭，脚本随即终止。",
+			AutoDismiss = false,
+			OutsideClickDismiss = false,
+			FooterButtons = {
+				Cancel = {
+					Title = "取消",
+					Variant = "Ghost",
+					Order = 1,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+					end,
+				},
+				Unload = {
+					Title = "卸载",
+					Variant = "Destructive",
+					Order = 2,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+						DoUnload()
+					end,
+				},
+			},
+		})
+	end)
+
+	if OkDialog then
+		return
+	end
+
+	if not LastUnloadAt or (os.clock() - LastUnloadAt) > 5 then
+		LastUnloadAt = os.clock()
+		pcall(function()
+			Library:Notify("再次点击「卸载脚本」确认卸载，5 秒内有效")
+		end)
+		return
+	end
+
+	LastUnloadAt = nil
+	DoUnload()
+end)
+
+MenuGroup:AddLabel("菜单快捷键")
+MenuGroup:AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	Visible = false,
+	Text = "菜单快捷键",
+})
+
+Library.ToggleKeybind = Library.Options and Library.Options.MenuKeybind
+
+local ThemeManager = Library.ThemeManager
+local SaveManager = Library.SaveManager
+
+if type(ThemeManager) == "table" then
+	pcall(function()
+		ThemeManager:SetLibrary(Library)
+		ThemeManager:SetFolder("XJWUITheme")
+		ThemeManager:ApplyToTab(Tabs["UI设置"])
+	end)
+end
+
+if type(SaveManager) == "table" then
+	pcall(function()
+		SaveManager:SetLibrary(Library)
+		SaveManager:SetFolder("XJWUIConfig")
+		SaveManager:BuildConfigSection(Tabs["UI设置"])
+	end)
+end
 
 Library:OnUnload(function()
     Cleanup()

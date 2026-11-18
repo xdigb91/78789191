@@ -7,58 +7,118 @@ local function SendDrive()
         }
         game:GetService("ReplicatedStorage"):WaitForChild("Packages"):WaitForChild("Packets"):WaitForChild("Packet"):WaitForChild("RemoteEvent"):FireServer(unpack(args))
     end)
-    if ok then
-        print("驾驶请求已发送")
-    else
-        print("驾驶请求失败 " .. tostring(err))
-    end
 end
-local Repos = {
-    "https://raw.githubusercontent.com/ATLASTEAM01/Obsidian/main/",
-    "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/",
-    "https://raw.githubusercontent.com/deividcomsono/Obsidian/master/",
-}
-local function Fetch(path)
-    for attempt = 1, 3 do
-        for _, repo in ipairs(Repos) do
-            local ok, res = pcall(function()
-                return game:HttpGet(repo .. path)
-            end)
-            if ok and res and #res > 0 then
-                return res
-            end
-        end
-        task.wait(1)
-    end
-    return nil
-end
-local libSrc = Fetch("Library.lua")
-if not libSrc then
-    return
-end
-local Library = loadstring(libSrc)()
-local ThemeManager = nil
-local SaveManager = nil
-local themeSrc = Fetch("addons/ThemeManager.lua")
-if themeSrc then
-    local ok, f = pcall(loadstring, themeSrc)
-    if ok and f then
-        pcall(function()
-            ThemeManager = f()
-        end)
-    end
-end
-local saveSrc = Fetch("addons/SaveManager.lua")
-if saveSrc then
-    local ok, f = pcall(loadstring, saveSrc)
-    if ok and f then
-        pcall(function()
-            SaveManager = f()
-        end)
-    end
-end
-local Window = Library:CreateWindow({ Title = "建造并击杀僵尸", Footer = "XJW", Center = true, AutoShow = true })
+
+	local OBSIDIAN_REPO = "https://gitlab.com/aristooey/Obsidian/-/raw/main/"
+
+	local OkLoad, Library = pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "Library.lua"))()
+	end)
+
+	if not OkLoad or type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
+		return
+	end
+
+	local ThemeManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/ThemeManager.lua"))()
+	end))
+	local SaveManager = select(2, pcall(function()
+		return loadstring(game:HttpGet(OBSIDIAN_REPO .. "addons/SaveManager.lua"))()
+	end))
+
+	Library.ThemeManager = ThemeManager
+	Library.SaveManager = SaveManager
+
+Library.Toggles = Library.Toggles or {}
+Library.Options = Library.Options or {}
+
+
+local ThemeManager = Library.ThemeManager
+local SaveManager = Library.SaveManager
+
+
+local Window = Library:CreateWindow({ Title = "建造并击杀僵尸", Footer = "XJW" })
 local Tabs = { Main = Window:AddTab("主页", "user"), Mod = Window:AddTab("修改车", "wrench"), UI = Window:AddTab("UI设置", "settings") }
+local MenuGroup = Tabs.UI:AddLeftGroupbox("菜单")
+
+local LastUnloadAt
+
+MenuGroup:AddButton("卸载脚本", function()
+	local function DoUnload()
+		task.defer(function()
+			pcall(function()
+				Library:Unload()
+			end)
+		end)
+	end
+
+	local OkDialog = pcall(function()
+		Window:AddDialog("XJWUnloadConfirm", {
+			Title = "卸载脚本",
+			Description = "确定要卸载脚本吗？所有已启用的功能将被关闭，脚本随即终止。",
+			AutoDismiss = false,
+			OutsideClickDismiss = false,
+			FooterButtons = {
+				Cancel = {
+					Title = "取消",
+					Variant = "Ghost",
+					Order = 1,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+					end,
+				},
+				Unload = {
+					Title = "卸载",
+					Variant = "Destructive",
+					Order = 2,
+					Callback = function(Dialog)
+						Dialog:Dismiss()
+						DoUnload()
+					end,
+				},
+			},
+		})
+	end)
+
+	if OkDialog then
+		return
+	end
+
+	if not LastUnloadAt or (os.clock() - LastUnloadAt) > 5 then
+		LastUnloadAt = os.clock()
+		pcall(function()
+			Library:Notify("再次点击「卸载脚本」确认卸载，5 秒内有效")
+		end)
+		return
+	end
+
+	LastUnloadAt = nil
+	DoUnload()
+end)
+
+MenuGroup:AddLabel("菜单快捷键")
+MenuGroup:AddKeyPicker("MenuKeybind", {
+	Default = "RightShift",
+	Visible = false,
+	Text = "菜单快捷键",
+})
+
+Library.ToggleKeybind = Library.Options and Library.Options.MenuKeybind
+
+local ThemeManager = Library.ThemeManager
+local SaveManager = Library.SaveManager
+
+if type(ThemeManager) == "table" then
+	ThemeManager:SetLibrary(Library)
+	ThemeManager:SetFolder("XJWUITheme")
+	ThemeManager:ApplyToTab(Tabs.UI)
+end
+
+if type(SaveManager) == "table" then
+	SaveManager:SetLibrary(Library)
+	SaveManager:SetFolder("XJWUIConfig")
+	SaveManager:BuildConfigSection(Tabs.UI)
+end
 local function GetCharPart()
     local char = LP.Character
     if char then
@@ -199,7 +259,6 @@ task.spawn(function()
                     end
                     if not warned then
                         warned = true
-                        print("未找到角色")
                     end
                 end
             else
@@ -209,7 +268,6 @@ task.spawn(function()
                 end
                 if not warned then
                     warned = true
-                    print("未上车 刷钱无效")
                 end
             end
         else
@@ -251,7 +309,6 @@ local function Snapshot(car)
         Defaults[attr] = car:GetAttribute(attr)
     end
     Defaults.snapped = true
-    print("已记录当前默认值")
 end
 local function ApplyAll(car)
     for i, attr in ipairs(attrs) do
@@ -262,11 +319,9 @@ local function ApplyAll(car)
         local v = Target[attr]
         if v ~= nil then car:SetAttribute(attr, v >= 0.5) end
     end
-    print("已应用到车辆")
 end
 local function RestoreAll(car)
     if not Defaults.snapped then
-        print("尚未应用过 无默认记录")
         return
     end
     for i, attr in ipairs(attrs) do
@@ -275,12 +330,10 @@ local function RestoreAll(car)
     for i, attr in ipairs(boolAttrs) do
         if Defaults[attr] ~= nil then car:SetAttribute(attr, Defaults[attr]) end
     end
-    print("已恢复默认属性")
 end
 Box:AddButton({ Text = "应用修改", Func = function()
     local car = FindCar()
     if not car then
-        print("未找到车辆 请先坐上你的车")
         return
     end
     Snapshot(car)
@@ -289,7 +342,6 @@ end })
 Box:AddButton({ Text = "恢复默认", Func = function()
     local car = FindCar()
     if not car then
-        print("未找到车辆 请先坐上你的车")
         return
     end
     RestoreAll(car)
@@ -303,16 +355,4 @@ for i, attr in ipairs(boolAttrs) do
     local s = Box:AddSlider(attr, { Text = boolNames[i], Min = 0, Max = 1, Default = 0, Suffix = "", Compact = false, Callback = function(v)
         Target[attr] = v
     end })
-end
-if ThemeManager then
-    ThemeManager:SetLibrary(Library)
-    ThemeManager:ApplyToTab(Tabs.UI)
-end
-if SaveManager then
-    SaveManager:SetLibrary(Library)
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
-    SaveManager:SetFolder("ZombieCarCrusher/Configs")
-    SaveManager:BuildConfigSection(Tabs.UI)
-    SaveManager:LoadAutoloadConfig()
 end

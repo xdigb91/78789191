@@ -1,7 +1,73 @@
-local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/finendss/VowLibrary/refs/heads/main/WINDUI.lua"))()
+local WindUI = (function()
+local HttpService = game:GetService("HttpService")
+local orig = game.HttpGet
+local mirrors = { "https://ghfast.top/", "https://gh-proxy.com/" }
+local function request(url)
+if type(url) ~= "string" then
+return nil
+end
+if type(orig) == "function" then
+local ok, body = pcall(orig, game, url)
+if ok and type(body) == "string" and #body > 0 then
+return body
+end
+else
+local ok, body = pcall(function()
+return HttpService:GetAsync(url)
+end)
+if ok and type(body) == "string" and #body > 0 then
+return body
+end
+end
+for _, p in ipairs(mirrors) do
+local ok, body = pcall(function()
+if type(orig) == "function" then
+return orig(game, p .. url)
+end
+return HttpService:GetAsync(p .. url)
+end)
+if ok and type(body) == "string" and #body > 0 then
+return body
+end
+end
+return nil
+end
+local hooked = false
+if type(orig) == "function" then
+hooked = pcall(function()
+game.HttpGet = function(self, url)
+return request(url)
+end
+end)
+end
+local lib = nil
+for _, u in ipairs({
+"https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
+"https://cdn.jsdelivr.net/gh/Footagesus/WindUI@1.6.66/dist/main.lua",
+}) do
+local ok, res = pcall(function()
+local code = request(u)
+if type(code) ~= "string" or #code < 1024 then
+return nil
+end
+return loadstring(code)()
+end)
+if ok and type(res) == "table" and type(res.CreateWindow) == "function" then
+lib = res
+break
+end
+end
+if hooked then
+pcall(function()
+game.HttpGet = orig
+end)
+end
+return lib
+end)()
 if not WindUI then
-local sg = game:GetService("StarterGui")
-sg:SetCore("SendNotification", {Title = "偷蛋脚本", Text = "WindUI 加载失败，请检查网络", Duration = 8})
+pcall(function()
+game:GetService("StarterGui"):SetCore("SendNotification", { Title = "偷蛋脚本", Text = "WindUI 加载失败，请检查网络后重试" })
+end)
 return
 end
 local Players = game:GetService("Players")
@@ -33,6 +99,21 @@ local Event = waitChild(ReplicatedStorage, "EggHitRequest", 10)
 if not Event then
 game:GetService("StarterGui"):SetCore("SendNotification", {Title = "偷蛋脚本", Text = "打蛋接口缺失: EggHitRequest 未找到(游戏更新可能已改名)", Duration = 8})
 end
+local PERF = {
+eggHp = setmetatable({}, { __mode = "k" }),
+rarity = setmetatable({}, { __mode = "k" }),
+eggFilter = setmetatable({}, { __mode = "k" }),
+petFilter = setmetatable({}, { __mode = "k" }),
+cursor = setmetatable({}, { __mode = "k" }),
+pick = nil,
+attacked = setmetatable({}, { __mode = "k" }),
+keysPool = setmetatable({}, { __mode = "k" }),
+eggPart = setmetatable({}, { __mode = "k" }),
+excl = {},
+iparams = nil,
+fbTop = 0,
+orig = {},
+}
 local PET_RETURN_POS = Vector3.new(-78.811653, 3.498025, -21.007202)
 local char = player.Character or player.CharacterAdded:Wait()
 local humanoid = waitChildLoop(char, "Humanoid")
@@ -102,6 +183,10 @@ local EGG_DATA = {
 { en = "CrackedEgg", cn = "碎裂蛋", weight = 14000000, rarity = "Spectral" },
 { en = "CastleEgg", cn = "城堡蛋", weight = 14500000, rarity = "Spectral" },
 { en = "LionEgg", cn = "狮子鸡蛋", weight = 15000000, rarity = "Spectral" },
+{ en = "Olympus", cn = "奥林匹斯蛋", weight = 16000000, rarity = "Spectral" },
+{ en = "Thunderstone", cn = "雷霆石蛋", weight = 17000000, rarity = "Spectral" },
+{ en = "Colosseum", cn = "斗兽场蛋", weight = 18000000, rarity = "Spectral" },
+{ en = "Caesar", cn = "凯撒蛋", weight = 19000000, rarity = "Spectral" },
 }
 local EGG_CN_TO_EN = {}
 EGG_WEIGHT_BY_CN = {}
@@ -450,18 +535,34 @@ keepAliveConn = nil
 end
 end)
 local function getEggPart(obj)
+if not obj then return nil end
+local nowT = os.clock()
+local c = PERF.eggPart[obj]
+if c and nowT < c.t then
+if c.v then
+if c.v.Parent then return c.v end
+else
+return nil
+end
+end
+local v
 local eggPart = obj:FindFirstChild("Egg")
 if eggPart then
-if eggPart:IsA("BasePart") then return eggPart end
-if eggPart:IsA("Model") then
-return eggPart.PrimaryPart or eggPart:FindFirstChildWhichIsA("BasePart")
+if eggPart:IsA("BasePart") then
+v = eggPart
+elseif eggPart:IsA("Model") then
+v = eggPart.PrimaryPart or eggPart:FindFirstChildWhichIsA("BasePart")
 end
 end
-if obj:IsA("BasePart") then return obj end
-if obj:IsA("Model") then
-return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+if not v then
+if obj:IsA("BasePart") then
+v = obj
+elseif obj:IsA("Model") then
+v = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
 end
-return nil
+end
+if v then PERF.eggPart[obj] = { v = v, t = nowT + 0.5 } end
+return v
 end
 local function getAllZones()
 local list = {}
@@ -666,8 +767,41 @@ if spd and humanoid.WalkSpeed < spd then humanoid.WalkSpeed = spd end
 humanoid:Move(mDir, true)
 end)
 end
-t += RunService.RenderStepped:Wait()
+t = t + RunService.RenderStepped:Wait()
 end
+end
+lockUtil.rayParams = function()
+if not lockUtil._rp then
+local p = RaycastParams.new()
+p.FilterType = Enum.RaycastFilterType.Exclude
+lockUtil._rp = p
+end
+return lockUtil._rp
+end
+lockUtil.rayBlocked = function(origin, dir, len)
+if not origin or not dir then return false end
+if dir.Magnitude < 0.01 then return false end
+local rp = lockUtil.rayParams()
+rp.FilterDescendantsInstances = char and { char } or {}
+local hit = workspace:Raycast(origin, dir.Unit * len, rp)
+return hit ~= nil
+end
+lockUtil.spotFree = function(pos)
+if not pos then return false end
+local rp = lockUtil.rayParams()
+rp.FilterDescendantsInstances = char and { char } or {}
+local foot = pos + Vector3.new(0, 1, 0)
+local down = workspace:Raycast(foot, Vector3.new(0, -9, 0), rp)
+if not down then return false end
+if down.Distance > 7.5 then return false end
+local blockedN = 0
+local dirs = { Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }
+for i = 1, 4 do
+if workspace:Raycast(foot + Vector3.new(0, 0.4, 0), dirs[i] * 1.6, rp) then
+blockedN = blockedN + 1
+end
+end
+return blockedN <= 1
 end
 lockUtil.navWalk = function(targetPos, arriveDist, opts)
 if not char or not char.Parent then return "stop" end
@@ -698,11 +832,13 @@ local startPos = char:GetPivot().Position
 local goal = Vector3.new(targetPos.X, startPos.Y, targetPos.Z)
 local wps = nil
 local wi = 1
-if (Vector3.new(goal.X - startPos.X, 0, goal.Z - startPos.Z)).Magnitude > 14 then
+if (Vector3.new(goal.X - startPos.X, 0, goal.Z - startPos.Z)).Magnitude > 6 then
 wps = lockUtil.navPath(startPos, goal)
 end
 local elapsed = 0
 local lastPos = startPos
+local avoidSide = nil
+local avoidT = 0
 local stallT = 0
 local stuckN = 0
 local repathN = 0
@@ -727,7 +863,7 @@ local remain = (Vector3.new(goal.X - curPos.X, 0, goal.Z - curPos.Z)).Magnitude
 if remain < arriveDist then result = "arrive" break end
 if wps then
 while wps and wi <= #wps and (Vector3.new(wps[wi].X - curPos.X, 0, wps[wi].Z - curPos.Z)).Magnitude < 4 do
-wi += 1
+wi = wi + 1
 stuckN = 0
 end
 if wi > #wps then wps = nil end
@@ -736,9 +872,34 @@ local legend = goal
 if wps and wps[wi] then legend = Vector3.new(wps[wi].X, curPos.Y, wps[wi].Z) end
 local dir = Vector3.new(legend.X - curPos.X, 0, legend.Z - curPos.Z)
 local toGoal = dir.Unit
+local moveDir = toGoal
+if opts.avoid and lockUtil.rayBlocked then
+local probe = Vector3.new(curPos.X, curPos.Y + 0.6, curPos.Z)
+local aheadDist = 3.5
+if remain < aheadDist then aheadDist = remain end
+if lockUtil.rayBlocked(probe, toGoal, aheadDist) then
+if not avoidSide then
+local left = Vector3.new(-toGoal.Z, 0, toGoal.X)
+local lb = lockUtil.rayBlocked(probe, left, 4)
+local rb = lockUtil.rayBlocked(probe, -left, 4)
+avoidSide = (lb and not rb) and -1 or 1
+avoidT = 0
+end
+avoidT = avoidT + 0.016
+if avoidT > 1 then
+avoidSide = -avoidSide
+avoidT = 0
+end
+local slide = Vector3.new(-toGoal.Z, 0, toGoal.X) * avoidSide
+moveDir = (slide * 0.95 + toGoal * 0.3).Unit
+else
+avoidSide = nil
+avoidT = 0
+end
+end
 local cam = workspace.CurrentCamera
 local camCF = cam and cam.CFrame
-local camDir = camCF and camCF:VectorToObjectSpace(toGoal) or toGoal
+local camDir = camCF and camCF:VectorToObjectSpace(moveDir) or moveDir
 if opts.brake then
 local brakeD = baseSpd * 0.15
 if brakeD < 3 then brakeD = 3 end
@@ -754,14 +915,14 @@ end
 end
 pcall(function() humanoid:Move(camDir, true) end)
 local dt = RunService.RenderStepped:Wait()
-elapsed += dt
+elapsed = elapsed + dt
 local moved = (curHrp.Position - lastPos).Magnitude
 lastPos = curHrp.Position
 if moved < 0.05 then
-stallT += dt
+stallT = stallT + dt
 if stallT > 0.4 then
 stallT = 0
-stuckN += 1
+stuckN = stuckN + 1
 if stuckN > 10 then result = "stuck" break end
 lockUtil.navJump()
 local gdir = Vector3.new(goal.X - curHrp.Position.X, 0, goal.Z - curHrp.Position.Z)
@@ -774,7 +935,7 @@ local fwd = 0.15
 if stuckN == 1 then fwd = 0.4 end
 lockUtil.navStep((gdir * fwd + perp).Unit, 0.5, boostSpd)
 if (stuckN == 2 or stuckN == 5 or stuckN == 8) and repathN < 3 and remain > 6 then
-repathN += 1
+repathN = repathN + 1
 local np = lockUtil.navPath(curHrp.Position, goal)
 if np then
 wps = np
@@ -836,7 +997,7 @@ lockUtil.tapSlot1Last = nowT
 local btn = lockUtil.tapSlot1Btn
 if btn == nil or not btn.Parent then
 if lockUtil.tapSlot1Miss > 0 then
-lockUtil.tapSlot1Miss -= 1
+lockUtil.tapSlot1Miss = lockUtil.tapSlot1Miss - 1
 return
 end
 pcall(function()
@@ -860,7 +1021,7 @@ local okc, conns = pcall(getconnections, sig)
 if okc and type(conns) == "table" then
 for _, cn in ipairs(conns) do
 pcall(function() cn:Fire() end)
-fired += 1
+fired = fired + 1
 end
 end
 end
@@ -905,7 +1066,7 @@ local elapsed = 0
 while elapsed < t do
 if not autoRun and not autoPickup then return false end
 local dt = RunService.Heartbeat:Wait()
-elapsed += dt
+elapsed = elapsed + dt
 end
 return true
 end
@@ -954,16 +1115,6 @@ end
 end)
 return hp
 end
-local PERF = {
-eggHp = setmetatable({}, { __mode = "k" }),
-rarity = setmetatable({}, { __mode = "k" }),
-eggFilter = setmetatable({}, { __mode = "k" }),
-petFilter = setmetatable({}, { __mode = "k" }),
-cursor = setmetatable({}, { __mode = "k" }),
-pick = nil,
-attacked = setmetatable({}, { __mode = "k" }),
-orig = {},
-}
 PERF.orig.getEggHealth = getEggHealth
 getEggHealth = function(obj)
 if not obj then return nil end
@@ -1144,7 +1295,7 @@ end
 local function matchesSelectedPetName(pet)
 local selectedCount = 0
 for _ in pairs(selectedPetRarities) do
-selectedCount += 1
+selectedCount = selectedCount + 1
 end
 if selectedCount == 0 then return true end
 local rarity = getDisplayRarity(pet)
@@ -1437,7 +1588,7 @@ local cam = workspace.CurrentCamera
 local camCF = cam and cam.CFrame
 local moveDir = camCF and camCF:VectorToObjectSpace(toGoal) or toGoal
 pcall(function() humanoid:Move(moveDir, true) end)
-elapsed += RunService.RenderStepped:Wait()
+elapsed = elapsed + RunService.RenderStepped:Wait()
 end
 pcall(function() humanoid:Move(Vector3.zero, true) end)
 return locked
@@ -1483,7 +1634,7 @@ autoInteractLink = false
 restoreGuardSpeed()
 return false
 end
-t += RunService.Heartbeat:Wait()
+t = t + RunService.Heartbeat:Wait()
 end
 local originPos = hrp.Position
 unlockCharacterFull()
@@ -1752,6 +1903,8 @@ local PICKAXE_SHOP = {
 { name = "Dragon", cn = "龙", price = "25Qi" },
 { name = "Royal Pickaxe", cn = "皇家", price = "50Qi" },
 { name = "Elite Pickaxe", cn = "精英", price = "100Qi" },
+{ name = "Zeus Pickaxe", cn = "宙斯", title = "宙斯镐子", price = "600Qi" },
+{ name = "Poseidon's Pickaxe", cn = "波塞冬", title = "波塞冬镐子", price = "4Sx" },
 }
 local TRAIL_SHOP = {
 { name = "White", cn = "白色" },
@@ -1890,192 +2043,235 @@ return fallback
 end
 return nil
 end
-local function walkToPlot(targetPos, arriveDist)
+local function findOpenNear(pos, refPos)
+if not pos then return nil end
+local p0 = Vector3.new(pos.X, pos.Y, pos.Z)
+local g0 = getGroundY(p0, true)
+if g0 then p0 = Vector3.new(p0.X, g0 + 0.2, p0.Z) end
+if lockUtil.spotFree and lockUtil.spotFree(p0) then return p0 end
+local ref = refPos or p0
+local best, bestD = nil, math.huge
+for r = 3, 15, 3 do
+for i = 0, 15 do
+local ang = i * (math.pi / 8)
+local px = pos.X + math.cos(ang) * r
+local pz = pos.Z + math.sin(ang) * r
+local gy = getGroundY(Vector3.new(px, pos.Y, pz), true)
+local cand = Vector3.new(px, gy and (gy + 0.2) or pos.Y, pz)
+if lockUtil.spotFree and lockUtil.spotFree(cand) then
+local dd = (Vector3.new(cand.X - ref.X, 0, cand.Z - ref.Z)).Magnitude
+if dd < bestD then best, bestD = cand, dd end
+end
+end
+if best then return best end
+end
+return p0
+end
+local function walkToPlot(targetPos, arriveDist, avoid)
 local function cancel()
 return not autoHome
 end
-local r = lockUtil.navWalk(targetPos, arriveDist, { maxTime = 30, cancel = cancel })
-return r ~= "stop"
+local r = lockUtil.navWalk(targetPos, arriveDist, { maxTime = 30, cancel = cancel, avoid = avoid == true })
+return r == "arrive"
 end
-local function walkStraightTo(targetPos, arriveDist)
-if not char or not char.Parent then return false end
-arriveDist = arriveDist or 2
-local maxTime = 30
-local baseSpd = getCurrentSpeed()
-if baseSpd < 1 then baseSpd = 1 end
-if baseSpd > 30 then baseSpd = 16 end
-local function restoreSpd()
-if humanoid and humanoid.Parent then
-pcall(function() humanoid.WalkSpeed = baseSpd end)
+local function noteTreadFail()
+PERF.treadFailN = (PERF.treadFailN or 0) + 1
+if PERF.treadFailN >= 3 then
+PERF.treadFailN = 0
+PERF.treadFailAt = os.clock() + 6
 end
-end
-if humanoid and humanoid.Parent then
-pcall(function()
-humanoid.PlatformStand = false
-humanoid.JumpPower = 50
-humanoid:ChangeState(Enum.HumanoidStateType.Running)
-end)
-end
-local startPos = char:GetPivot().Position
-local goal = Vector3.new(targetPos.X, startPos.Y, targetPos.Z)
-local elapsed = 0
-local lastPos = startPos
-local stallT = 0
-local stuckN = 0
-local arrived = false
-while elapsed < maxTime do
-if not autoHome then break end
-local curHrp = char:FindFirstChild("HumanoidRootPart")
-if not curHrp then break end
-local curPos = curHrp.Position
-local remain = (Vector3.new(goal.X - curPos.X, 0, goal.Z - curPos.Z)).Magnitude
-if remain < arriveDist then arrived = true break end
-local dir = Vector3.new(goal.X - curPos.X, 0, goal.Z - curPos.Z)
-local toGoal = dir.Unit
-local cam = workspace.CurrentCamera
-local camCF = cam and cam.CFrame
-local camDir = camCF and camCF:VectorToObjectSpace(toGoal) or toGoal
-local brakeD = baseSpd * 0.15
-if brakeD < 3 then brakeD = 3 end
-local useSpd = baseSpd
-if remain < brakeD then
-useSpd = remain * 8
-if useSpd < 2 then useSpd = 2 end
-if useSpd > baseSpd then useSpd = baseSpd end
-end
-if humanoid and humanoid.Parent and math.abs(humanoid.WalkSpeed - useSpd) > 0.1 then
-pcall(function() humanoid.WalkSpeed = useSpd end)
-end
-pcall(function() humanoid:Move(camDir, true) end)
-local dt = RunService.RenderStepped:Wait()
-elapsed += dt
-local moved = (curHrp.Position - lastPos).Magnitude
-lastPos = curHrp.Position
-if moved < 0.05 then
-stallT += dt
-if stallT > 0.4 then
-stallT = 0
-stuckN += 1
-if stuckN > 10 then break end
-end
-else
-stallT = 0
-end
-end
-pcall(function() humanoid:Move(Vector3.zero, true) end)
-restoreSpd()
-return arrived
 end
 local autoHomeConn = nil
-local function startAutoHome()
-if autoHomeConn then return end
-autoHomeConn = task.spawn(function()
-local treadCache = nil
-local treadRecheck = 0
-local function findTreadmill(root)
-if not root then return nil end
-local function hasTread(inst)
+
+local function findTreadmillInPlot(plot)
+if not plot then return nil end
+local now = os.clock()
+local cached = PERF.treadPart
+if cached and cached.Parent and cached:IsDescendantOf(plot) and now < (PERF.treadAt or 0) then
+return cached
+end
+local function isTread(inst)
 return string.find(string.lower(inst.Name), "treadmill", 1, true) ~= nil
 end
-for _, ch in ipairs(root:GetChildren()) do
-if hasTread(ch) then
-if ch:IsA("Folder") then
-local inner = ch:FindFirstChildWhichIsA("Model") or ch:FindFirstChildWhichIsA("BasePart")
-if inner then return inner end
-end
-return ch
-end
-end
-for _, ch in ipairs(root:GetDescendants()) do
-if (ch:IsA("Model") or ch:IsA("BasePart")) and hasTread(ch) then
-return ch
-end
-end
-for _, ch in ipairs(root:GetDescendants()) do
-if ch:IsA("ProximityPrompt") and string.find(string.lower(ch.Name), "treadmill", 1, true) then
-local top = ch
-while top.Parent and top.Parent ~= root do
-top = top.Parent
-end
-if top:IsA("Folder") then
-top = top:FindFirstChildWhichIsA("Model") or top:FindFirstChildWhichIsA("BasePart") or top
-end
-return top
-end
+local function partOf(inst)
+if inst:IsA("BasePart") then return inst end
+if inst:IsA("Model") then
+return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart") or nil
 end
 return nil
 end
-while autoHome do
+local hit = nil
+for _, ch in ipairs(plot:GetChildren()) do
+if isTread(ch) then
+hit = partOf(ch)
+if hit then break end
+end
+end
+if not hit then
+for _, dd in ipairs(plot:GetDescendants()) do
+if (dd:IsA("Model") or dd:IsA("BasePart")) and isTread(dd) then
+hit = partOf(dd)
+if hit then break end
+end
+end
+end
+PERF.treadPart = hit
+PERF.treadAt = now + (hit and 2 or 1)
+return hit
+end
+
+local function isStandingOnTreadmill(treadPart, plot)
+if not treadPart then return false end
+local hrp = char and char:FindFirstChild("HumanoidRootPart")
+if not hrp then return false end
+local parent = treadPart.Parent
+local parentIsTread = parent ~= nil and parent ~= plot and string.find(string.lower(parent.Name), "treadmill", 1, true) ~= nil
+local rp = lockUtil.rayParams and lockUtil.rayParams() or nil
+if not rp then return false end
+rp.FilterDescendantsInstances = char and { char } or {}
+local hit = workspace:Raycast(hrp.Position, Vector3.new(0, -8, 0), rp)
+local onPart = false
+if hit and hit.Instance then
+local inst = hit.Instance
+if inst == treadPart then
+onPart = true
+elseif parentIsTread and (inst == parent or inst:IsDescendantOf(parent)) then
+onPart = true
+end
+end
+if onPart then return true end
+if PERF.treadSetPos then
+local d = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(PERF.treadSetPos.X, 0, PERF.treadSetPos.Z)).Magnitude
+local dy = math.abs(hrp.Position.Y - PERF.treadSetPos.Y)
+if d < 10 and dy < 8 then return true end
+end
+return false
+end
+local function nudgeToTread(treadPart, plot, dur)
+if not treadPart then return false end
+local hrp = char and char:FindFirstChild("HumanoidRootPart")
+if not hrp or not humanoid then return false end
+local tPos = treadPart.Position
+local limit = dur or 1.6
+local t0 = os.clock()
+local lastPos = hrp.Position
+local stillT = 0
+local jumpT = 0
+while os.clock() - t0 < limit do
+if not autoHome then return false end
+local cur = char and char:FindFirstChild("HumanoidRootPart")
+if not cur then return false end
+local dx = tPos.X - cur.Position.X
+local dz = tPos.Z - cur.Position.Z
+local flat = math.sqrt(dx * dx + dz * dz)
+local dy = tPos.Y - cur.Position.Y
+if flat < 0.7 and math.abs(dy) < 4 then
+pcall(function() humanoid:Move(Vector3.zero, true) end)
+break
+end
+local cam = workspace.CurrentCamera
+local camCF = cam and cam.CFrame
+local dir = Vector3.new(dx, 0, dz)
+if dir.Magnitude > 0.01 then dir = dir.Unit end
+local mv = camCF and camCF:VectorToObjectSpace(dir) or dir
+pcall(function() humanoid:Move(mv, true) end)
+stillT = stillT + task.wait()
+jumpT = jumpT + 0.05
+local moved = (cur.Position - lastPos).Magnitude
+lastPos = cur.Position
+if moved < 0.06 and stillT > 0.35 then
+pcall(function()
+if humanoid.JumpPower and humanoid.JumpPower < 50 then humanoid.JumpPower = 50 end
+humanoid.Jump = true
+end)
+stillT = 0
+end
+if jumpT > 0.9 and math.abs(dy) > 1.5 and flat < 6 then
+pcall(function() humanoid.Jump = true end)
+jumpT = 0
+end
+end
+pcall(function() humanoid:Move(Vector3.zero, true) end)
+return isStandingOnTreadmill(treadPart, plot)
+end
+local function goHomeOnce()
 local plot = getMyPlot()
-if plot then
-local homePart = plot:FindFirstChild("Baseplate") or plot.PrimaryPart or plot:FindFirstChildWhichIsA("BasePart")
-local treadPart = nil
-local treadSpot = nil
-local now = os.clock()
-if treadCache and (not treadCache:IsDescendantOf(plot) or now >= treadRecheck) then treadCache = nil end
-if not treadCache then
-treadCache = findTreadmill(plot)
-treadRecheck = now + 3
-end
-local treadmill = treadCache
-if treadmill then
-if treadmill:IsA("BasePart") then
-treadPart = treadmill
-else
-treadPart = treadmill:FindFirstChildWhichIsA("BasePart")
-end
-treadSpot = treadmill:FindFirstChildWhichIsA("ProximityPrompt", true)
-end
-if not treadPart then treadCache = nil end
+if not plot then return false end
 local curHrp = char and char:FindFirstChild("HumanoidRootPart")
-if curHrp then
-local curPos = curHrp.Position
-local treadGoal = treadSpot and treadSpot.WorldPosition or (treadPart and treadPart.Position)
-if treadGoal then
-local gY = getGroundY(treadGoal, true)
-if gY then treadGoal = Vector3.new(treadGoal.X, gY, treadGoal.Z) end
+if not curHrp then return false end
+if PERF.treadFailAt and os.clock() < PERF.treadFailAt then return false end
+if PERF.treadArrived then
+if os.clock() - (PERF.treadSetAt or 0) < 1.5 then return true end
+local tp = findTreadmillInPlot(plot)
+if tp and isStandingOnTreadmill(tp, plot) then
+local h1 = char and char:FindFirstChild("HumanoidRootPart")
+PERF.treadSetPos = h1 and h1.Position or PERF.treadSetPos
+return true
 end
-local homePos = homePart and homePart.Position
-local treadDist = treadGoal and (treadGoal - curPos).Magnitude
-local onTread = false
-if treadmill then
-local tbPos, tbSize = nil, nil
-if treadmill:IsA("BasePart") then
-tbPos, tbSize = treadmill.Position, treadmill.Size
-elseif treadmill:IsA("Model") and treadmill.PrimaryPart then
-local cf, sz = treadmill:GetBoundingBox()
-tbPos, tbSize = cf.Position, sz
+if tp and nudgeToTread(tp, plot) then
+local h2 = char and char:FindFirstChild("HumanoidRootPart")
+PERF.treadSetPos = h2 and h2.Position or nil
+PERF.treadSetAt = os.clock()
+PERF.treadTryN = 0
+return true
 end
-if tbPos and tbSize then
-local rel = curPos - tbPos
-onTread = math.abs(rel.X) <= tbSize.X * 0.5 + 3
-and math.abs(rel.Z) <= tbSize.Z * 0.5 + 3
-and math.abs(rel.Y - tbPos.Y) <= tbSize.Y * 0.5 + 3
+PERF.treadArrived = false
+PERF.homeBack = false
+PERF.treadFailAt = os.clock() + 3
+return false
 end
-end
-if onTread then
-elseif treadDist and treadDist <= 8 then
-else
-local targetPos = nil
-local targetStraight = false
-if homePos and (homePos - curPos).Magnitude > 4 then
-targetPos = homePos
-elseif treadGoal and treadDist and treadDist > 8 then
-targetPos = treadGoal
-targetStraight = true
-end
-if targetPos then
+if not PERF.homeBack then
+local homePart = plot:FindFirstChild("Baseplate") or plot.PrimaryPart or plot:FindFirstChildWhichIsA("BasePart")
+if not homePart then return false end
+local treadRef = findTreadmillInPlot(plot)
+local homeRef = treadRef and treadRef.Position or curHrp.Position
+local homePos = findOpenNear(homePart.Position, homeRef) or homePart.Position
 unlockCharacter()
-if targetStraight then
-walkStraightTo(targetPos, 2)
-else
-walkToPlot(targetPos, 2)
+local arrived = walkToPlot(homePos, 2, true)
+unlockCharacter()
+if not arrived then
+noteTreadFail()
+return false
+end
+PERF.homeBack = true
+PERF.treadFailN = 0
+end
+local treadPart = findTreadmillInPlot(plot)
+if not treadPart then return true end
+unlockCharacter()
+local arrived = false
+local tPos = Vector3.new(treadPart.Position.X, treadPart.Position.Y + 0.4, treadPart.Position.Z)
+if walkToPlot(tPos, 2.5, false) then
+arrived = nudgeToTread(treadPart, plot, 2)
+end
+if not arrived then
+arrived = nudgeToTread(treadPart, plot, 5)
 end
 unlockCharacter()
+if arrived then
+local h3 = char and char:FindFirstChild("HumanoidRootPart")
+PERF.treadArrived = true
+PERF.treadSetPos = h3 and h3.Position or nil
+PERF.treadSetAt = os.clock()
+PERF.treadTryN = 0
+PERF.treadFailN = 0
+else
+noteTreadFail()
 end
+return arrived
 end
-end
-end
+local function startAutoHome()
+if autoHomeConn then return end
+PERF.homeBack = false
+PERF.treadArrived = false
+PERF.treadSetPos = nil
+PERF.treadSetAt = 0
+PERF.treadFailN = 0
+PERF.treadFailAt = nil
+PERF.treadTryN = 0
+autoHomeConn = task.spawn(function()
+while autoHome do
+pcall(goHomeOnce)
 task.wait(0.5)
 end
 autoHomeConn = nil
@@ -2106,13 +2302,13 @@ end
 local function approachWithPetPriority(standPos)
 local busyWait = 0
 while pickupBusy and autoRun and busyWait < 20 do
-busyWait += RunService.Heartbeat:Wait()
+busyWait = busyWait + RunService.Heartbeat:Wait()
 end
 if not autoRun and not autoPickup then return false end
 local r = panToPickupAware(standPos)
 local guard = 0
 while r == "pet" and guard < 3 do
-guard += 1
+guard = guard + 1
 handlePetPriority()
 if not autoRun then return false end
 r = panToPickupAware(standPos)
@@ -2390,12 +2586,12 @@ Vector3.new(eggPosNow.X, curPos.Y, eggPosNow.Z)
 )
 end
 local dt = RunService.Heartbeat:Wait()
-attackCd += dt
+attackCd = attackCd + dt
 if attackCd >= 0.35 and not pickupBusy then
 attackEgg(part)
 attackCd = 0
 end
-elapsed += dt
+elapsed = elapsed + dt
 end
 end
 end
@@ -2447,6 +2643,10 @@ EGG_ALIAS = {
 ["CrackedEgg"] = "碎裂蛋", ["Cracked Egg"] = "碎裂蛋",
 ["CastleEgg"] = "城堡蛋", ["Castle Egg"] = "城堡蛋",
 ["LionEgg"] = "狮子鸡蛋", ["Lion Egg"] = "狮子鸡蛋",
+["Olympus"] = "奥林匹斯蛋", ["Olympus Egg"] = "奥林匹斯蛋", ["OlympusEgg"] = "奥林匹斯蛋",
+["Thunderstone"] = "雷霆石蛋", ["Thunderstone Egg"] = "雷霆石蛋", ["Thunder Stone"] = "雷霆石蛋", ["ThunderStone"] = "雷霆石蛋",
+["Colosseum"] = "斗兽场蛋", ["Colosseum Egg"] = "斗兽场蛋", ["ColosseumEgg"] = "斗兽场蛋",
+["Caesar"] = "凯撒蛋", ["Caesar Egg"] = "凯撒蛋", ["CaesarEgg"] = "凯撒蛋",
 ["Skull"] = "骷髅蛋", ["Skull Egg"] = "骷髅蛋", ["Fortune Skull"] = "骷髅蛋", ["Fortune Skull Egg"] = "骷髅蛋",
 }
 local eggNameCache = {}
@@ -2647,7 +2847,7 @@ end
 local function matchesPetFilter(obj)
 local selectedCount = 0
 for _ in pairs(petEspFilter) do
-selectedCount += 1
+selectedCount = selectedCount + 1
 end
 if selectedCount == 0 then return true end
 local rarity = getDisplayRarity(obj)
@@ -2721,7 +2921,12 @@ PERF.petFilter[obj] = { v = v, t = nowT + 1 }
 return v
 end
 local function updateEsp(cache, isPet, refreshText, batchSize)
-local keys = {}
+local keys = PERF.keysPool[cache]
+if not keys then
+keys = {}
+PERF.keysPool[cache] = keys
+end
+table.clear(keys)
 for obj in pairs(cache) do
 table.insert(keys, obj)
 end
@@ -2743,7 +2948,7 @@ if cached.billboard then cached.billboard:Destroy() end
 cache[obj] = nil
 if isPet == false then eggTextCache[obj] = nil end
 elseif refreshText and used < budget then
-used += 1
+used = used + 1
 local text
 if isPet then
 text = buildPetText(obj)
@@ -2776,9 +2981,16 @@ end
 end
 local function refreshPetEsp()
 local pickups = workspace:FindFirstChild("AnimalPickups")
-for _, pet in ipairs(pickups and pickups:GetChildren() or {}) do
-createEsp(pet, petEspCache, "PetBB", true)
+local list = (pickups and pickups:GetChildren()) or {}
+local total = #list
+if total == 0 then return end
+local budget = math.min(total, 128)
+local startIdx = (PERF.petRefreshIdx or 0) % total
+for i = 1, budget do
+local pet = list[((startIdx + i - 1) % total) + 1]
+if pet and pet.Parent then createEsp(pet, petEspCache, "PetBB", true) end
 end
+PERF.petRefreshIdx = (startIdx + budget) % total
 end
 local function hookEggFolder(folder)
 if eggFoldersHooked[folder] then return end
@@ -2810,9 +3022,16 @@ end
 return list
 end
 local function refreshEggEsp()
-for _, egg in ipairs(collectAllEggs()) do
-createEsp(egg, eggEspCache, "EggBB", false)
+local list = collectAllEggs()
+local total = #list
+if total == 0 then return end
+local budget = math.min(total, 120)
+local startIdx = (PERF.eggRefreshIdx or 0) % total
+for i = 1, budget do
+local egg = list[((startIdx + i - 1) % total) + 1]
+if egg and egg.Parent then createEsp(egg, eggEspCache, "EggBB", false) end
 end
+PERF.eggRefreshIdx = (startIdx + budget) % total
 end
 task.spawn(function()
 local folder = workspace:FindFirstChild("AnimalPickups") or waitChildLoop(workspace, "AnimalPickups")
@@ -2982,23 +3201,8 @@ startCloneOnHit()
 local Window = WindUI:CreateWindow({
 Title = "打破并偷走一个鸡蛋",
 Author = "由i制作",
-Folder = "EggAuto",
-Size = UDim2.fromOffset(420, 440),
-Theme = "Dark",
-HideSearchBar = true,
+ToggleKey = Enum.KeyCode.RightShift,
 })
-local BrandLabel = Instance.new("TextLabel")
-BrandLabel.Name = "XJW"
-BrandLabel.Text = "XJW"
-BrandLabel.Font = Enum.Font.GothamBold
-BrandLabel.TextSize = 16
-BrandLabel.BackgroundTransparency = 1
-BrandLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-BrandLabel.TextXAlignment = Enum.TextXAlignment.Left
-BrandLabel.AutomaticSize = Enum.AutomaticSize.X
-BrandLabel.Size = UDim2.new(0, 0, 0, 22)
-BrandLabel.LayoutOrder = 1
-BrandLabel.Parent = Window.UIElements.Main.Main.Topbar.Left
 local Tabs = {
 Announce = Window:Tab({ Title = "公告", Icon = "table-of-contents", Locked = false }),
 Main = Window:Tab({ Title = "主页", Icon = "settings", Locked = false }),
@@ -3010,6 +3214,7 @@ Treadmill = Window:Tab({ Title = "跑步机", Icon = "activity", Locked = false 
 }
 local AnnounceTab = Tabs.Announce
 AnnounceTab:Section({ Title = "公告", TextXAlignment = "Left", TextSize = 17 })
+AnnounceTab:Paragraph({ Title = "11月18日", Desc = "增加新的蛋 继续优化卡顿(透视会变慢) 修复自动跑步机" })
 AnnounceTab:Paragraph({ Title = "11月15日", Desc = "修复扩展蛋自动打问题 优化卡顿 增加自动找钻石" })
 AnnounceTab:Paragraph({ Title = "11月9日", Desc = "增加新的扩展区域 增加新的鸡蛋 增加新的宠物品质" })
 AnnounceTab:Paragraph({ Title = "11月4日", Desc = "增加新的区域蛋和新的宠物品质 增加自动领取图鉴奖励 增加新的稿子" })
@@ -3018,7 +3223,7 @@ AnnounceTab:Paragraph({ Title = "10月13日", Desc = "已修复传送宠物 增�
 AnnounceTab:Paragraph({ Title = "10月11日", Desc = "传送回拿宠物已绕过反作弊" })
 local ActivityTab = Tabs.Activity
 ActivityTab:Section({ Title = "活动", TextXAlignment = "Left", TextSize = 17 })
-ActivityTab:Toggle({ Title = "自动找钻石(开自动打蛋)", Default = false, Callback = function(v)
+ActivityTab:Toggle({ Title = "自动找钻石(开自动打蛋)", Value = false, Callback = function(v)
 GemFarmOn = v
 GemRunId = GemRunId + 1
 if v then
@@ -3030,7 +3235,7 @@ end
 end })
 local PurchaseTab = Tabs.Purchase
 PurchaseTab:Section({ Title = "自动升级", TextXAlignment = "Left", TextSize = 17 })
-PurchaseTab:Toggle({ Title = "自动升级宠物格子", Default = false, Callback = function(v)
+PurchaseTab:Toggle({ Title = "自动升级宠物格子", Value = false, Callback = function(v)
 autoUpgradePlot = v
 if v then startAutoUpgradePlot() end
 end })
@@ -3107,6 +3312,19 @@ if zone then
 local node = zone:FindFirstChild(spec[2])
 if node then
 pcall(function() node:Destroy() end)
+end
+end
+end
+local romanZone = zoneBuilds:FindFirstChild("Zone14")
+if romanZone then
+local romanMap = romanZone:FindFirstChild("RomanMap")
+if romanMap then
+local romanTargets = { ["vfx2"] = true, ["vfx"] = true, ["hand"] = true, ["wall"] = true, ["pine"] = true, ["house"] = true, ["clouds"] = true }
+for _, node in ipairs(romanMap:GetChildren()) do
+local lowName = string.lower(node.Name)
+if romanTargets[lowName] or lowName == "break" or string.find(lowName, "entrance", 1, true) then
+pcall(function() node:Destroy() end)
+end
 end
 end
 end
@@ -3211,36 +3429,26 @@ part.LocalTransparencyModifier = 1
 end
 end
 end
-local function startAntiLag()
-if antiLagTask then return end
-pcall(function() deleteZoneDecor() end)
-pcall(function() killZonePartsTextures() end)
-pcall(function() deleteOtherPlots() end)
-pcall(function() killTextures(workspace) end)
-pcall(function() applyGraphicsLow() end)
-antiLagTask = task.spawn(function()
-while antiLag do
+
+local function runAntiLagOnce()
+antiLagTask = true
 pcall(function() killFx(workspace) end)
 pcall(function() deleteZoneDecor() end)
 pcall(function() killZonePartsTextures() end)
 pcall(function() deleteOtherPlots() end)
 pcall(function() killTextures(workspace) end)
+pcall(function() applyGraphicsLow() end)
 for _, p in ipairs(Players:GetPlayers()) do
 if p ~= player then
 pcall(function() hideChar(p.Character) end)
 end
 end
-task.wait(5)
-end
+task.wait(0.5)
 antiLagTask = nil
-end)
-end
-local function stopAntiLag()
-antiLag = false
 end
 local MainTab = Tabs.Main
 MainTab:Section({ Title = "自动化(两个一起开的话优先开第1个再开第2个)", TextXAlignment = "Left", TextSize = 17 })
-autoRunToggle = MainTab:Toggle({ Title = "自动打蛋", Default = false, Callback = function(v)
+autoRunToggle = MainTab:Toggle({ Title = "自动打蛋", Value = false, Callback = function(v)
 autoRun = v
 if GemFarmOn then
 GemRunId = GemRunId + 1
@@ -3251,7 +3459,7 @@ end
 end
 unlockCharacter()
 end })
-MainTab:Toggle({ Title = "自动拿宠物", Default = false, Callback = function(v)
+MainTab:Toggle({ Title = "自动拿宠物", Value = false, Callback = function(v)
 autoPickup = v
 if not v and not autoRun then unlockCharacter() end
 end })
@@ -3280,15 +3488,15 @@ end
 end
 end })
 MainTab:Section({ Title = "其他", TextXAlignment = "Left", TextSize = 17 })
-MainTab:Toggle({ Title = "自动装备最好宠物", Default = false, Callback = function(v)
+MainTab:Toggle({ Title = "自动装备最好宠物", Value = false, Callback = function(v)
 autoEquipBest = v
 if v then startAutoEquipBest() end
 end })
-MainTab:Toggle({ Title = "自动领取图鉴奖励", Default = false, Callback = function(v)
+MainTab:Toggle({ Title = "自动领取图鉴奖励", Value = false, Callback = function(v)
 autoClaimDex = v
 if v then startAutoClaimDex() end
 end })
-MainTab:Toggle({ Title = "防挂机", Default = false, Callback = function(v)
+MainTab:Toggle({ Title = "防挂机", Value = false, Callback = function(v)
 antiAFK = v
 if v then
 startAntiAFK()
@@ -3296,25 +3504,23 @@ else
 stopAntiAFK()
 end
 end })
-MainTab:Toggle({ Title = "防卡顿优化", Default = true, Callback = function(v)
-antiLag = v
-if v then
-startAntiLag()
-else
-stopAntiLag()
-end
+MainTab:Button({ Title = "防卡顿优化", Callback = function()
+if antiLagTask then return end
+task.spawn(function()
+pcall(runAntiLagOnce)
+end)
 end })
 Tabs.Treadmill:Section({ Title = "跑步机", TextXAlignment = "Left", TextSize = 17 })
-Tabs.Treadmill:Toggle({ Title = "自动跑步机", Default = false, Callback = function(v)
+Tabs.Treadmill:Toggle({ Title = "自动跑步机", Value = false, Callback = function(v)
 autoHome = v
 if v then startAutoHome() end
 end })
-Tabs.Treadmill:Toggle({ Title = "自动升级跑步机", Default = false, Callback = function(v)
+Tabs.Treadmill:Toggle({ Title = "自动升级跑步机", Value = false, Callback = function(v)
 autoUpgradeTreadmill = v
 if v then startAutoUpgradeTreadmill() end
 end })
 MainTab:Section({ Title = "功能", TextXAlignment = "Left", TextSize = 17 })
-AutoInteractToggle = MainTab:Toggle({ Title = "自动拾取", Default = false, Callback = function(v)
+AutoInteractToggle = MainTab:Toggle({ Title = "自动拾取", Value = false, Callback = function(v)
 autoInteract = v
 if v then
 startAutoInteract()
@@ -3322,7 +3528,7 @@ else
 stopAutoInteract()
 end
 end })
-MainTab:Toggle({ Title = "自动攻击", Default = false, Callback = function(v)
+MainTab:Toggle({ Title = "自动攻击", Value = false, Callback = function(v)
 autoAttack = v
 end })
 local EspTab = Tabs.Esp
@@ -3342,7 +3548,7 @@ petEspCache[pet] = nil
 end
 if petEspEnabled then refreshPetEsp() end
 end })
-EspTab:Toggle({ Title = "宠物透视", Default = false, Callback = function(v)
+EspTab:Toggle({ Title = "宠物透视", Value = false, Callback = function(v)
 petEspEnabled = v
 if v then
 refreshPetEsp()
@@ -3369,7 +3575,7 @@ eggEspCache[egg] = nil
 end
 if eggEspEnabled then refreshEggEsp() end
 end })
-EspTab:Toggle({ Title = "蛋透视", Default = false, Callback = function(v)
+EspTab:Toggle({ Title = "蛋透视", Value = false, Callback = function(v)
 eggEspEnabled = v
 if v then
 refreshEggEsp()
@@ -3382,7 +3588,27 @@ end
 end })
 local UiTab = Tabs["UI 设置"]
 UiTab:Section({ Title = "配置", TextXAlignment = "Left", TextSize = 17 })
-UiTab:Paragraph({ Title = "自动保存", Desc = "配置随窗口 Folder 自动保存与加载" })
+UiTab:Paragraph({ Title = "自动保存", Desc = "本脚本不写入本地配置，每次注入均为默认关闭" })
+UiTab:Section({ Title = "菜单", TextXAlignment = "Left", TextSize = 17 })
+UiTab:Button({ Title = "卸载脚本", Callback = function()
+if WindUI.__unloadAt and (os.clock() - WindUI.__unloadAt) <= 5 then
+WindUI.__unloadAt = nil
+for _, n in ipairs({ "ScreenGui", "NotificationGui", "DropdownGui", "TooltipGui" }) do
+pcall(function()
+local g = WindUI[n]
+if typeof(g) == "Instance" then g:Destroy() end
+end)
+end
+pcall(function()
+game:GetService("StarterGui"):SetCore("SendNotification", { Title = "偷蛋脚本", Text = "脚本 UI 已卸载" })
+end)
+return
+end
+WindUI.__unloadAt = os.clock()
+pcall(function()
+game:GetService("StarterGui"):SetCore("SendNotification", { Title = "偷蛋脚本", Text = "再次点击「卸载脚本」确认卸载，5 秒内有效" })
+end)
+end })
 task.spawn(function()
 while true do
 if autoInteractLink then
